@@ -7,14 +7,15 @@ from ptrace.tools import locateProgram
 from string import ascii_lowercase, ascii_uppercase
 from sys import stderr, argv, exit
 import socket
+import types
 import re
 from optparse import OptionParser
 #Just learnt there's an option parser in Python, which will come in useful
 
 #import string
-supported = ['ftp'] #supported remote services
+supported = ['ftp', 'pop3'] #supported remote services
 
-servicePorts = {'ftp':21}
+servicePorts = {'ftp':21, 'pop3':110}
 
 #helps trying to determine where fault occurred
 ##Help from simple_dbg.py example that comes with python ptrace
@@ -262,7 +263,7 @@ def getHistory(cmd, index, fuzz): #fetches the last 10
     history.append(cmd + fuzz[index-num])
   return history
 
-def fuzzFTPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', toAttach=False, pid):
+def fuzzFTPmain(ip, port, username, password, toAttach, pid):
   is_attached = False
   if toAttach:
     if int(pid)>=0:
@@ -315,7 +316,7 @@ def fuzzFTPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser',
     actualFTPfuzz(True, username, password, port, ip)
     actualFTPfuzz(False, username, password, port, ip)
 
-def actualFTPfuzz(justAuthentication=False, username, password, port, ip):
+def actualFTPfuzz(justAuthentication, username, password, port, ip):
   global fuzz
   fuzz = attack()
   fuzz.insert(0, ' ') #insert the blank argument at the start
@@ -476,7 +477,7 @@ def actualFTPfuzz(justAuthentication=False, username, password, port, ip):
                       (temp1, temp2) = match.group().split(',')[-2:] 
                       port = int(temp1)*256 + int(temp2) #calculating the port to connect to
                       sock2.connect((ip, port))
-                  except sock2.error
+                  except sock2.error:
                     print "Passive mode socket creation failure"
                     exit(1)
               sentCommand = cmd + ' ' + string
@@ -501,7 +502,7 @@ def actualFTPfuzz(justAuthentication=False, username, password, port, ip):
           sock.close()
   
 
-def fuzzPOPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', toAttach=False, pid):
+def fuzzPOPmain(ip, port, username, password, toAttach, pid):
   if toAttach: #local service, being attached
     if int(pid)<0:
       print 'Invalid PID. Make sure is correct if you want to attach a local service'
@@ -614,46 +615,73 @@ def writeError(file, command, Error='There was an error', wrongReturn=''):
 def main():
   params = len(argv)
   flags = None
+  port = None
+  ip = None
+  local = None
+  attachRemote=False
   defaultUsage = 'usage: %prog [options] [program] [service (server fuzzer only)]\nSupported Remotes Services: '
   #-------------OPTIONS NEEDED-------------
   #user, password, file (with read/write access if possible), option for hanging until reset
   global supported
   for service in supported:
     defaultUsage+=service+' ' #for easier updating supported services, just need to update global list
-  defaultUsage+="\nPlease ust full path for service, not starting script"
+  defaultUsage+="\nPlease use full path for service, not starting script"
   parser = OptionParser(usage=defaultUsage)
   # parser.add_option("-h", action="callback", callback=usage)
-  parser.add_option("-a", "--all", action="store_true", dest="all", help="Command line fuzzer, fuzzes all program parameters a-z and A-Z, and the no flag option.")
+  parser.add_option("-a", "--all", action="store_true", dest="all", help="Fuzzes all simple options a-z and A-Z, and the no flag option for a command line program")
   parser.add_option("-p", "--port", type="int", dest="port", help="Port for server (if not default for service)")
+  parser.add_option("-l", "--local", type="int", dest="local", help="Server PID for a remote server")
   parser.add_option("-t", "--target", action="store", type="string", dest="ip", help="Target IP address")
-  parser.add_option("-u", "--username", action="store", type="string", dest="username", help="Username for logging on server, enabling full fuzzing")
-  parser.add_option("-w", "--password", action="store", type="string", dest="password", help="Password for logging onto server, enabling full fuzzing")
+  parser.add_option("-u", "--username", action="store", type="string", dest="username", help="Username for logging on server, enabling full fuzzing", default="username")
+  parser.add_option("-w", "--password", action="store", type="string", dest="password", help="Password for logging onto server, enabling full fuzzing", default="password")
   parser.add_option("-c", action="store", type="string", dest="flags", help="Command line fuzzer, fuzzes specific program arguments.\n\r\n\rThe syntax for specifying arguments with -c is:\nThe way to specify an argument with a single hyphen is with a single colon (:) and for an argument with 2 hyphens is with 2 colons (::). This allows for arguments with a hyphen in the flag.\nAn example is (using part of the man page for Nmap):\nNmap 5.00 ( http://nmap.org )\nUsage: nmap [Scan Type(s)] [Options] {target specification}\nTARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n...\n  --dns-servers <serv1[,serv2],...>: Specify custom DNS servers\n\nIf you wanted to fuzz the parameters -iL, --exclude, --excludefile and --dns-servers, and the program Nmap is located at /usr/bin/nmap, then the command to fuzz would be \n%s -c :iL::exlude::excludefile::dns-servers /usr/bin/nmap\nIf the no flag argument needs to be fuzzed (no options), for instance doing nmap fuzzedstring, then an  extra colon needs to be added to the end. So %s -c :iL::exlude::excludefile::dns-servers: /usr/bin/nmap" % (argv[0], argv[0]))
   (options, args) = parser.parse_args()
+  lastParam = argv[params-1]
+  lastParam = lastParam.lower()
   #try:
   if (options.all):
   #command line argument fuzzer with all simple arguments
     arguments = genFuzzOpts()
-    fuzzProg(arguments, argv[params-1])
+    fuzzProg(arguments, lastParam)
+    exit(1)
   #command line argument fuzzer with specific flags
-  if (options.flags):
+  elif (options.flags):
     arguments = genFuzzOpts2(options.flags)
-    fuzzProg(arguments, argv[params-1])
-  #remoteService = params-1  
-  #if argv[params-1] not in supported:
-  #    usage()
-  #  if not (options.port):
-  #    port = servicesPorts[argv[params-1]
-  #      usage()
-  #      exit(1)
-  #    arguments = genFuzzOpts2(argv[2])
-  #    fuzzProg(arguments, argv[params-1])	
-  #else:
-  #  usage()
-  #  exit(1)
-  #except:
-  #invalid option
-  #moreHelp()
+    fuzzProg(arguments, lastParam)
+    exit(1)
+  elif not port: #no port specified. Set port to standard for service
+    if lastParam in supported: #if the last argument is a supported service
+      port = servicePorts[lastParam]
+    else:
+      usage()
+  #so now if not command line fuzzer, & now have port
+  if ip: #remote service fuzzer
+    #make sure is a valid IP address using regex
+    match = re.search(r'([0-9]+\.)+[0-9]+', ip) 
+    #Not 100% guaranteed to be valid IP, but will do in favour of having a long regular expression 
+    if lastParam not in supported:
+      print 'Need supported protocol'
+      print defaultUsage
+      exit(1)
+    if not match:
+      print 'Invalid IP address given'
+      usage()
+    if local:
+      if type(local) == types.IntType: #making sure the PID is a real number
+        attachRemote = True #so need to attach debugger
+      else:
+        usage()
+    #remote fuzzing
+    #this part could possibly be done using a dictionary with the method associated with each protocol, but not sure if it would work
+    #and it might not be even feasible because different protocols may need different parameters
+    if lastParam == 'ftp':
+      fuzzFTPmain(ip, port, username, password, attachRemote, local)
+      exit(1)
+    elif lastParam == 'pop3':
+      fuzzPOP(ip, port, username, password, attachRemote, local)
+      exit(1)
+      
+    
 
 if __name__=='__main__':
   main()
