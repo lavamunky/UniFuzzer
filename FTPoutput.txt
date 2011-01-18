@@ -1,0 +1,149 @@
+#ktop:~$ nc -nv 192.168.1.78 21
+#Connection to 192.168.1.78 21 port [tcp/*] succeeded!
+#220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------
+#220-You are user number 1 of 50 allowed.
+#220-Local time is now 17:51. Server port: 21.
+#220-This is a private system - No anonymous login
+#220-IPv6 connections are also welcome on this server.
+#220 You will be disconnected after 15 minutes of inactivity.
+#USER ftpuser
+#331 User ftpuser OK. Password required
+#PASS emirates06
+#230-User ftpuser has group access to:  1001      
+#230 OK. Current directory is /
+#APPE
+#501 No file name
+#?
+#500 ?
+#HELP
+#214-The following SITE commands are recognized
+# ALIAS
+#  CHMOD
+#   IDLE
+#    UTIME
+#    214 Pure-FTPd - http://pureftpd.org/
+#    ABOR
+#    226 Since you see this ABOR must've succeeded
+#    REIN
+#    500 Unknown command
+#    CWD
+#    250 OK. Current directory is /
+#    MDTM
+#    501 Missing argument
+#    MDTM passwd
+#    213 20110112174746
+#    NLST
+#    425 No data connection
+#    PWD
+#    257 "/" is your current location
+#    RETR
+#    501 No file name
+#    RETR passwd
+#    425 No data connection
+#    RMD
+#    550 No directory name
+#    RNFR
+#    550 No file name
+#    RNFR passwd
+#    350 RNFR accepted - file exists, ready for destination
+#    RNTO .
+#    451 Rename/move failure: Device or resource busy
+#    SITE
+#    500 SITE: Missing argument
+#    HELP
+#    214-The following SITE commands are recognized
+#     ALIAS
+#      CHMOD
+#       IDLE
+#        UTIME
+#        214 Pure-FTPd - http://pureftpd.org/
+#        SITE ALIAS
+#        214-The following aliases are available :
+#        214  
+#        SITE CHMOD
+#        501 Missing argument
+#        SITE CHMOD passwd
+#        550 No file name
+#        SITE IDLE
+#        501 SITE IDLE: Missing argument
+#        SITE IDLE passwd
+#        501 Garbage found after value : passwd
+#        SITE SIZE
+#        500 SITE SIZE is an unknown extension
+#        SITE UTIME
+#        501 No file name
+#        SITE UTIME passwd
+#        501 Missing argument
+#        SIZE
+#        501 Missing argument
+#        SIZE passwd
+#        213 1758
+#        STOR
+#        501 No file name
+#        STOR passwd
+#        553 Can't open that file: Permission denied
+#        TYPE
+#        501-Missing argument
+#        501-A(scii) I(mage) L(ocal)
+#        501 TYPE is now ASCII
+#        TYPE A
+#        200 TYPE is now ASCII
+#        TYPE I
+#        200 TYPE is now 8-bit binary
+#        TYPE L
+#        200-Missing argument
+#        200 TYPE is now 8-bit binary
+#        TYPE AAAAAAAAA
+#        200 TYPE is now ASCII
+#        TYPE A
+#        200 TYPE is now ASCII
+#        USER
+#        530 You're already logged in
+#        APPE
+#        501 No file name
+#        APPE passwd
+#        553 Can't open that file: Permission denied
+#        CDUP 
+#        250 OK. Current directory is /
+#        MODE
+#        501 Missing argument
+#        HELP MODE
+#        214-The following SITE commands are recognized
+#         ALIAS
+#          CHMOD
+#           IDLE
+#            UTIME
+#            214 Pure-FTPd - http://pureftpd.org/
+#            MODE HELP
+#            504 Please use S(tream) mode
+#
+#            500 ?
+#            S
+#            500 Unknown command
+#            MODE S
+#            200 S OK
+#
+#            500 ?
+#            LIST
+#            425 No data connection
+#            NOOP
+#            200 Zzz...
+#            STAT
+#            211 http://www.pureftpd.org/
+#            STOU
+#            425-FILE: pureftpd.4d2deb2e.b2.0000
+#            425 No data connection
+#            STRU
+#            501 Missing argument
+#            STRU passwd 
+#            504 Only F(ile) is supported
+#            STRU F
+#            200 F OK
+#            SYST
+#            215 UNIX Type: L8
+#            EXIT
+#            500 Unknown command
+#            QUIT
+#            221-Goodbye. You uploaded 0 and downloaded 0 kbytes.
+#            221 Logout.
+#
