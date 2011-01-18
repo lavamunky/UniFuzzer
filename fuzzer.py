@@ -256,168 +256,59 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   filename = 'ftpFuzzResultsFor'+ip
   file = open(filename, 'w')
   file.write('---------------------FTP fuzzing results for host ' + ip + '---------------------\r\n')
-  commandList = ['ABOR', 'APPE', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST', 'ACCT', 'ADAT', 'ALLO', 'AUTH', 'CCC', 'CONF', 'FEAT', 'LANG', 'MIC', 'MLSD', 'MLST', 'OPTS', 'PBSZ', 'PROT', 'REIN', 'REST', 'RNTO', 'SMNT']
+  commandList = ['ABOR', 'APPE', 'CWD', 'DELE', 'LIST', 'MDTM', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST', 'ACCT', 'ADAT', 'ALLO', 'AUTH', 'CCC', 'CONF', 'FEAT', 'LANG', 'MIC', 'MLSD', 'MLST', 'OPTS', 'PBSZ', 'PROT', 'REIN', 'REST', 'RNTO', 'SMNT', 'MKD' ]
   
   correctResponse = {
-  
-    'ABOR': [], 'CWD': [], 'DELE': [], 'LIST': [], 'MDTM': [], 'MKD': [], 
-    'NLST': [], 'PASS': [], 'PASV': [], 'PORT': [], 'PWD': [], 'QUIT': [], 
-    'RETR': [], 'RMD': [], 'RNFR': [], 'RNTO': [], 'SITE': [], 'SIZE': [], 
-    'STOR': [], 'TYPE': [], 'USER': [], 'APPE': ['150', '501'] , 'CDUP': [], 
-    'HELP': [], 'MODE': [], 'NOOP': [], 'STAT': [], 'STOU': [], 'STRU': [], 
-    'SYST': [], 'ACCT': [], 'ADAT': [], 'ALLO': [], 'AUTH': [], 'CCC': [], 
-    'CONF': [], 'FEAT': [], 'LANG': [], 'MIC': [], 'MLSD': [], 'MLST': [], 
-    'OPTS': [], 'PBSZ': [], 'PROT': [], 'REIN': [], 'REST': [], 'RNTO': [], 
-    'SMNT': []]
+  #Replies from the server we don't care about. From RFC959 (unless specified).
+    'ABOR': ['500', '501', '502'], 
+    'CWD': ['500', '501', '550'], 
+    'DELE': ['450', '550'], 
+    'LIST': ['125', '150', '226', '250', '450', '500', '501'], 
+    'MDTM': ['550', '500', '501'], #RFC3659
+    'MKD': ['257', '500', '501'], 
+    'NLST': ['125', '150', '226', '250', '425', '426', '451', '450', '500', '501'], 
+    'PASS': ['530', '332'], 
+    'PASV': ['227', '500', '501'], 
+    'PORT': ['200', '500', '501'], 
+    'PWD': ['500', '501', '502'], 
+    'QUIT': ['221', '500'], 
+    'RETR': ['226', '250', '425', '426', '451', '450', '550', '500', '501'], 
+    'RMD': ['500', '501', '550'], 
+    'RNFR': ['450', '550', '500', '501', '350'], 
+    'RNTO': ['250', '532', '553', '500', '501'], 
+    'SITE': ['200', '500', '501'], 
+    'SIZE': ['550', '500', '501'], #RFC3659
+    'STOR': ['425', '532', '450', '452', '553', '500', '501'], 
+    'TYPE': ['200', '500', '501', '504'], 
+    'USER': ['530', '331', '332'], 
+    'APPE': ['150', '501'] , 
+    'CDUP': ['200', '500', '501', '550'], 
+    'HELP': ['211', '214', '500', '501'], 
+    'MODE': ['200', '500', '501', '504'], 
+    'NOOP': ['200', '500'], 
+    'STAT': ['211', '212', '213', '450', '500', '501'], 
+    'STOU': ['425', '532', '450', '452', '553', '500', '501'], 
+    'STRU': ['200', '500', '501', '504'], 
+    'SYST': ['215', '500', '501'], 
+    'ACCT': ['530', '500', '501'], 
+    'ADAT': ['503', '501', '535'], #RFC2228 
+    'ALLO': ['200', '500', '501', '504'], 
+    'AUTH': ['500', '502', '504'], #RFC2228
+    'CCC': ['534', '533'], #RFC2228
+    'CONF': ['502', '501', '503', '500', '537', '535', '533'], #RFC2228
+    'FEAT': [], 
+    'LANG': ['500', '501', '502', '504'], #RFC2640
+    'MIC': ['502', '501', '503', '500', '537', '535', '533'], #RFC2228
+    'MLSD': ['500', '501', '550', '530', '553', '503', '504'], #RFC3659
+    'MLST': ['500', '501', '550', '530', '553', '503', '504'], #RFC3659
+    'OPTS': [], 
+    'PBSZ': ['500', '501', '503'], #RFC2228
+    'PROT': ['500', '504', '503', '534'], #RFC2228 
+    'REIN': ['500'], 
+    'REST': ['500', '501', '350'], 
+    'RNTO': ['250', '532', '553', '500', '501'], 
+    'SMNT': ['500', '501', '550']
   }
-
-  #peter@peter-desktop:~$ nc -nv 192.168.1.78 21
-  #Connection to 192.168.1.78 21 port [tcp/*] succeeded!
-  #220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------
-  #220-You are user number 1 of 50 allowed.
-  #220-Local time is now 17:51. Server port: 21.
-  #220-This is a private system - No anonymous login
-  #220-IPv6 connections are also welcome on this server.
-  #220 You will be disconnected after 15 minutes of inactivity.
-  #USER ftpuser
-  #331 User ftpuser OK. Password required
-  #PASS password
-  #230-User ftpuser has group access to:  1001      
-  #230 OK. Current directory is /
-  #APPE
-  #501 No file name
-  #?
-  #500 ?
-  #HELP
-  #214-The following SITE commands are recognized
-  #ALIAS
-  #CHMOD
-  #IDLE
-  #UTIME
-  #214 Pure-FTPd - http://pureftpd.org/
-  #ABOR
-  #226 Since you see this ABOR must've succeeded
-  #REIN
-  #500 Unknown command
-  #CWD
-  #250 OK. Current directory is /
-  #MDTM
-  #501 Missing argument
-  #MDTM passwd
-  #213 20110112174746
-  #NLST
-  #425 No data connection
-  #PWD
-  #257 "/" is your current location
-  #RETR
-  #501 No file name
-  #RETR passwd
-  #425 No data connection
-  #RMD
-  #550 No directory name
-  #RNFR
-  #550 No file name
-  #RNFR passwd
-  #350 RNFR accepted - file exists, ready for destination
-  #RNTO .
-  #451 Rename/move failure: Device or resource busy
-  #SITE
-  #500 SITE: Missing argument
-  #HELP
-  #214-The following SITE commands are recognized
-  #  ALIAS
-  #  CHMOD
-  #  IDLE
-  #  UTIME
-  #214 Pure-FTPd - http://pureftpd.org/
-  #SITE ALIAS
-  #214-The following aliases are available :
-  #214  
-  #SITE CHMOD
-  #501 Missing argument
-  #SITE CHMOD passwd
-  #550 No file name
-  #SITE IDLE
-  #501 SITE IDLE: Missing argument
-  #SITE IDLE passwd
-  #501 Garbage found after value : passwd
-  #SITE SIZE
-  #500 SITE SIZE is an unknown extension
-  #SITE UTIME
-  #501 No file name
-  #SITE UTIME passwd
-  #501 Missing argument
-  #SIZE
-  #501 Missing argument
-  #SIZE passwd
-  #213 1758
-  #STOR
-  #501 No file name
-  #STOR passwd
-  #553 Can't open that file: Permission denied
-  #TYPE
-  #501-Missing argument
-  #501-A(scii) I(mage) L(ocal)
-  #501 TYPE is now ASCII
-  #TYPE A
-  #200 TYPE is now ASCII
-  #TYPE I
-  #200 TYPE is now 8-bit binary
-  #TYPE L
-  #200-Missing argument
-  #200 TYPE is now 8-bit binary
-  #TYPE AAAAAAAAA
-  #200 TYPE is now ASCII
-  #TYPE A
-  #200 TYPE is now ASCII
-  #USER
-  #530 You're already logged in
-  #APPE
-  #501 No file name
-  #APPE passwd
-  #553 Can't open that file: Permission denied
-  #CDUP 
-  #250 OK. Current directory is /
-  #MODE
-  #501 Missing argument
-  #HELP MODE
-  #214-The following SITE commands are recognized
-  #  ALIAS
-  #  CHMOD
-  #  IDLE
-  #  UTIME
-  #214 Pure-FTPd - http://pureftpd.org/
-  #MODE HELP
-  #504 Please use S(tream) mode
-  #500 ?
-  #S
-  #500 Unknown command
-  #MODE S
-  #200 S OK
-  #500 ?
-  #LIST
-  #425 No data connection
-  #NOOP
-  #200 Zzz...
-  #STAT
-  #211 http://www.pureftpd.org/
-  #STOU
-  #425-FILE: pureftpd.4d2deb2e.b2.0000
-  #425 No data connection
-  #STRU
-  #501 Missing argument
-  #STRU passwd 
-  #504 Only F(ile) is supported
-  #STRU F
-  #200 F OK
-  #SYST
-  #215 UNIX Type: L8
-  #EXIT
-  #500 Unknown command
-  #QUIT									     
-  #221-Goodbye. You uploaded 0 and downloaded 0 kbytes.                      
-  #221 Logout.								     
-  #############################################################################################
 
   #fuzz authentication
   for string in fuzz:
@@ -443,16 +334,23 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
         user = username
       sock.send('USER ' + user + '\r\n') #fuzz username
       answer = sock.recv(1024)
+      
       if num % 2 == 1: #just fuzzing USER + want to loop again instead of trying PASS
+        if answer[0:3]=='230' or answer[0:3]=='220':
+          print "Password accepted! This shouldn't happen unless the user specified has a password consisting of a series of A's or a number. This will be counted as an error."
+          history = getHistory('PASS', fuzz.index(string), fuzz)
+          file.write('Server crashed after:\r\n')
+          for sentCommand in range(len(history)):
+            file.write(history[sentCommand] + '\r\n')
         continue
       sock.send('PASS ' + string + '\r\n') #Fuzz password
       answer = sock.recv(1024)
-      if answer[0:3]=='230':
+      if answer[0:3]=='230' or answer[0:3]=='220':
         print "Password accepted! This shouldn't happen unless the user specified has a password consisting of a series of A's or a number. This will be counted as an error."
-      history = getHistory('PASS', fuzz.index(string), fuzz)
-      file.write('Server crashed after:\r\n')
-      for sentCommand in range(len(history)):
-        file.write(history[sentCommand] + '\r\n')
+        history = getHistory('PASS', fuzz.index(string), fuzz)
+        file.write('Server crashed after:\r\n')
+        for sentCommand in range(len(history)):
+          file.write(history[sentCommand] + '\r\n')
       sock.close()
 
   sock2 = None #may be needed later
@@ -518,13 +416,11 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
             if (sock2): #if using passive mode, check this channel too
               answer2 = sock2.recv(1024)  
               code = answer2[0:3]
-              if code!='200' and code!='202' and (code not in correctResponse[cmd]) :
-                writeError(file, sentCommand, 'There appears to be an error with', answer)
             else:
               code = answer[0:3]
-              if code!='200' and code!='202' and (code not in correctResponse[cmd]): 
-                #not a correct response as per dictionary
-                writeError(file, sentCommand, 'There appears to be an error with', answer)
+            if code!='202' and code!='502' and (code not in correctResponse[cmd]): 
+              #not a correct response as per dictionary (code 202/502 for not implemented)
+              writeError(file, sentCommand, 'There appears to be an error with', answer)
             if connectionModeAttempts>=2:
               break
         sock.send('QUIT\r\n')
