@@ -9,9 +9,6 @@ from sys import stderr, argv, exit
 from optparse import OptionParser
 #Just learnt there's an option parser in Python, which will come in useful
 
-#----------------TESTING GITHUB WORKING-----------#
-
-
 #import string
 supported = ['ftp'] #supported remote services
 attackChain = 0 #global variable signifying the amount of times each attack is tried(set later)
