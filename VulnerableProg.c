@@ -1,4 +1,4 @@
-#define BUFFERSIZE 10
+#define BUFFERSIZE 1024
 #include <stdio.h>
 #include <string.h>
 

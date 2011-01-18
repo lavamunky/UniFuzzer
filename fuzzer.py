@@ -497,16 +497,17 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
               elif connectionModeAttempts==1:
                 connectionModeAttempts+=1
                 sock.send('PASV\r\n')
-                sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                answer = sock2.recv(1024)
-                if answer[0:3]=='227':#passive mode is allowed
-                  match = re.search(r'(\,\d+)+', answer) #Obtaining the numbers to calculate the port
-                  (temp1, temp2) = match.group().split(',')[-2:] 
-                  port = int(temp1)*256 + int(temp2) #calculating the port to connect to
-                  sock2.connect((ip, port))
-                  if sock2==-1:
-                    print "Socket creation failure"
-                    exit(1)
+                try:
+                  sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                  answer = sock2.recv(1024)
+                  if answer[0:3]=='227':#passive mode is allowed
+                    match = re.search(r'(\,\d+)+', answer) #Obtaining the numbers to calculate the port
+                    (temp1, temp2) = match.group().split(',')[-2:] 
+                    port = int(temp1)*256 + int(temp2) #calculating the port to connect to
+                    sock2.connect((ip, port))
+                except sock2.error
+                  print "Passive mode socket creation failure"
+                  exit(1)
             if (sock2): #if using passive mode, check this channel too
               answer2 = sock2.recv(1024)
               if answer2[0:3] not in correctResponse[cmd]:
@@ -529,36 +530,54 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
 def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', connected=False):
   global fuzz
   fuzz = attack()
-
+  filename = 'POP3fuzzResultsFor'+ip
+  file = open(filename, 'w')
   fuzzedCommands = ['USER', 'PASS', 'LIST'] #more to follow
   #3 stages of fuzzing POP3 - fuzz username, password, and then every command while authenticated
   variableList = ['', '', ''] # for holding different fuzzes between username, password + a command to fuzz when authenticated
-  for variableToFuzz in range(len(fuzzedCommands)):
-    #first if is 1, since @ variablToFuzz==0, the USER command will be fuzzed
-    if variableToFuzz == 1: #Need username in order to fuzz password
-      variableList[0] = username
-    elif variableToFuzz > 1:
-      variableList[1] = password #variableList[0] already the correct username
+  try:
+    for variableToFuzz in range(len(fuzzedCommands)):
+      #first if is 1, since @ variablToFuzz==0, the USER command will be fuzzed
+      if variableToFuzz == 1: #Need username in order to fuzz password
+        variableList[0] = username
+      elif variableToFuzz > 1:
+        variableList[1] = password #variableList[0] already the correct username
     
-    #for element in variableList:
-    for fuzzElem in range(len(fuzz)):
-      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      sock.connect((ip, port)) #create socket & connect to pop3 server
-      if variableToFuzz[0]==username:
-        sock.send('USER ' + username)
+      #for element in variableList:
+      for fuzzElem in range(len(fuzz)):
+        try:
+          sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          sock.connect((ip, port)) #create socket & connect to pop3 server
+        except:
+          sock.error:
+        if variableToFuzz[0]==username:
+          sock.send('USER ' + username)
+          answer = sock.recv(1024)
+          if answer[:1]=='-':
+            print 'Error with username ' + username
+            exit(1)
+        if variableToFuzz[1]==password:
+          sock.send('PASS ' + password)
+          answer = sock.recv(1024)
+          if answer[:1]=='-':
+            print 'Error with password ' + password
+            exit(1)
+        #Now need to do fuzzing
+        sentCommand = fuzzedCommands(variableToFuzz) + ' ' + fuzz(fuzzElem)
+        sock.send(sentCommand)
         answer = sock.recv(1024)
-        if answer[:1]=='-':
-          print 'Error with username ' + username
-          exit(1)
-      if variableToFuzz[1]==password:
-        sock.send('PASS ' + password)
-        answer = sock.recv(1024)
-        if answer[:1]=='-':
-          print 'Error with password ' + password
-          exit(1)
-      #Now need to do fuzzing
-      sock.send(fuzzedCommands(variableToFuzz) + ' ' + fuzz(fuzzElem))
-      answer = sock.recv(1024)
+        if answer[:1]=='+':
+          print 'Error, probably should\'ve been wrong'
+          file.write("Problem here, using " + sentCommand)
+  except sock.error:
+    print 'Problem occurred. Service may be down.'
+    history = getHistory(cmd, fuzz.index(string), fuzz)
+    file.write('Server crashed after:\r\n')
+    for sentCommand in range(len(history)):
+      file.write(history[sentCommand] + '\r\n')
+
+  file.close()
+  sock.close()
 
 def main():
   params = len(argv)
