@@ -510,10 +510,11 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
                   exit(1)
             if (sock2): #if using passive mode, check this channel too
               answer2 = sock2.recv(1024)
+              sentCommand = cmd + ' ' + string
               if answer2[0:3] not in correctResponse[cmd]:
-                file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+                writeError(file, sentCommand, 'There appears to be an error with', answer)
             if answer[0:3] not in correctResponse[cmd]: #not a correct response as per dictionary
-              file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+              writeError(file, sentCommand, 'There appears to be an error with', answer)
           if connectionModeAttempts>=2:
             break
         sock.send('QUIT\r\n')
@@ -532,7 +533,7 @@ def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   fuzz = attack()
   filename = 'POP3fuzzResultsFor'+ip
   file = open(filename, 'w')
-  fuzzedCommands = ['USER', 'PASS', 'LIST'] #more to follow
+  fuzzedCommands = ['USER', 'PASS', 'LIST', 'STAT', 'RETR', 'DELE', 'NOOP', 'RSET', 'UPDATE', 'TOP', 'UIDL', 'APOP'] #more to follow
   #3 stages of fuzzing POP3 - fuzz username, password, and then every command while authenticated
   variableList = ['', '', ''] # for holding different fuzzes between username, password + a command to fuzz when authenticated
   try:
@@ -566,9 +567,11 @@ def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
         sentCommand = fuzzedCommands(variableToFuzz) + ' ' + fuzz(fuzzElem)
         sock.send(sentCommand)
         answer = sock.recv(1024)
+        if fuzzedCommands(variableToFuzz)=='RSET' or fuzzedCommands(variableToFuzz)=='NOOP':
+          if answer[:1]=='-':
+            writeError(file, sentCommand, 'There was an error')
         if answer[:1]=='+':
-          print 'Error, probably should\'ve been wrong'
-          file.write("Problem here, using " + sentCommand)
+          writeError(file, sentCommand, 'There seems to be an error')
   except sock.error:
     print 'Problem occurred. Service may be down.'
     history = getHistory(cmd, fuzz.index(string), fuzz)
@@ -578,6 +581,14 @@ def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
 
   file.close()
   sock.close()
+
+def writeError(file, command, Error='There was an error', wrongReturn=''):
+  #this will write an error to stdout & a file
+  file.write(Error + ' ' + command)
+  print Error + ' ' + command
+  if wrongReturn!='':
+    file.write('The answer given was: ' + wrongReturn)
+    print 'The answer given was: ' + wrongReturn
 
 def main():
   params = len(argv)
