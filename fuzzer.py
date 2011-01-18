@@ -256,15 +256,19 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   filename = 'ftpFuzzResultsFor'+ip
   file = open(filename, 'w')
   file.write('---------------------FTP fuzzing results for host ' + ip + '---------------------\r\n')
-  commandList = ['ABOR', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'APPE', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST']
+  commandList = ['ABOR', 'APPE', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST', 'ACCT', 'ADAT', 'ALLO', 'AUTH', 'CCC', 'CONF', 'FEAT', 'LANG', 'MIC', 'MLSD', 'MLST', 'OPTS', 'PBSZ', 'PROT', 'REIN', 'REST', 'RNTO', 'SMNT']
   
   correctResponse = {
   
     'ABOR': [], 'CWD': [], 'DELE': [], 'LIST': [], 'MDTM': [], 'MKD': [], 
     'NLST': [], 'PASS': [], 'PASV': [], 'PORT': [], 'PWD': [], 'QUIT': [], 
     'RETR': [], 'RMD': [], 'RNFR': [], 'RNTO': [], 'SITE': [], 'SIZE': [], 
-    'STOR': [], 'TYPE': [], 'USER': [], 'APPE': ['150', '501'] , 'CDUP': [], 'HELP': [], 
-    'MODE': [], 'NOOP': [], 'STAT': [], 'STOU': [], 'STRU': [], 'SYST': []
+    'STOR': [], 'TYPE': [], 'USER': [], 'APPE': ['150', '501'] , 'CDUP': [], 
+    'HELP': [], 'MODE': [], 'NOOP': [], 'STAT': [], 'STOU': [], 'STRU': [], 
+    'SYST': [], 'ACCT': [], 'ADAT': [], 'ALLO': [], 'AUTH': [], 'CCC': [], 
+    'CONF': [], 'FEAT': [], 'LANG': [], 'MIC': [], 'MLSD': [], 'MLST': [], 
+    'OPTS': [], 'PBSZ': [], 'PROT': [], 'REIN': [], 'REST': [], 'RNTO': [], 
+    'SMNT': []]
   }
 
   #peter@peter-desktop:~$ nc -nv 192.168.1.78 21
