@@ -258,14 +258,14 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   file.write('---------------------FTP fuzzing results for host ' + ip + '---------------------\r\n')
   commandList = ['ABOR', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'APPE', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST']
   
-  #correctResponse = {
+  correctResponse = {
   
-  #  'ABOR': , 'CWD': , 'DELE': , 'LIST': , 'MDTM': , 'MKD': , 
-  #  'NLST': , 'PASS': , 'PASV': , 'PORT': , 'PWD': , 'QUIT': , 
-  #  'RETR': , 'RMD': , 'RNFR': , 'RNTO': , 'SITE': , 'SIZE': , 
-  #  'STOR': , 'TYPE': , 'USER': , 'APPE': ['150', '501'] , 'CDUP': , 'HELP': , 
-  #  'MODE': , 'NOOP': , 'STAT': , 'STOU': , 'STRU': , 'SYST': 
-  #}
+    'ABOR': [], 'CWD': [], 'DELE': [], 'LIST': [], 'MDTM': [], 'MKD': [], 
+    'NLST': [], 'PASS': [], 'PASV': [], 'PORT': [], 'PWD': [], 'QUIT': [], 
+    'RETR': [], 'RMD': [], 'RNFR': [], 'RNTO': [], 'SITE': [], 'SIZE': [], 
+    'STOR': [], 'TYPE': [], 'USER': [], 'APPE': ['150', '501'] , 'CDUP': [], 'HELP': [], 
+    'MODE': [], 'NOOP': [], 'STAT': [], 'STOU': [], 'STRU': [], 'SYST': []
+  }
 
   #peter@peter-desktop:~$ nc -nv 192.168.1.78 21
   #Connection to 192.168.1.78 21 port [tcp/*] succeeded!
@@ -487,7 +487,9 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
             #enter the additional site commands into the array in form 'SITE <command>'
             index = fuzz.index[cmd]+1 #get the index to insert them in (next index)
             for command in temp:
-              fuzz.insert(index, 'SITE ' + command) #each command is a SITE command
+              newCommand = 'SITE ' + command
+              fuzz.insert(index, newCommand) #each command is a SITE command, put in extra commands to fuzz
+              correctResponse[newCommand] = [] #Needed for testing responses. Being left blank.
           connectionModeAttempts = 0
           for x in range(2): 
             if answer[0:3]=='425':#Needs to either change, or nothing open anyway
@@ -508,15 +510,19 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
                 except sock2.error
                   print "Passive mode socket creation failure"
                   exit(1)
+            sentCommand = cmd + ' ' + string
             if (sock2): #if using passive mode, check this channel too
-              answer2 = sock2.recv(1024)
-              sentCommand = cmd + ' ' + string
-              if answer2[0:3] not in correctResponse[cmd]:
+              answer2 = sock2.recv(1024)  
+              code = answer2[0:3]
+              if code!='200' and code!='202' and (code not in correctResponse[cmd]) :
                 writeError(file, sentCommand, 'There appears to be an error with', answer)
-            if answer[0:3] not in correctResponse[cmd]: #not a correct response as per dictionary
-              writeError(file, sentCommand, 'There appears to be an error with', answer)
-          if connectionModeAttempts>=2:
-            break
+            else:
+              code = answer[0:3]
+              if code!='200' and code!='202' and (code not in correctResponse[cmd]): 
+                #not a correct response as per dictionary
+                writeError(file, sentCommand, 'There appears to be an error with', answer)
+            if connectionModeAttempts>=2:
+              break
         sock.send('QUIT\r\n')
         sock.close()
       except sock.error:
@@ -549,8 +555,9 @@ def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
         try:
           sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
           sock.connect((ip, port)) #create socket & connect to pop3 server
-        except:
-          sock.error:
+        except sock.error:
+          print 'Error creating the socket'
+          exit(1)
         if variableToFuzz[0]==username:
           sock.send('USER ' + username)
           answer = sock.recv(1024)
@@ -572,15 +579,16 @@ def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
             writeError(file, sentCommand, 'There was an error')
         if answer[:1]=='+':
           writeError(file, sentCommand, 'There seems to be an error')
+        sock.close()
   except sock.error:
     print 'Problem occurred. Service may be down.'
     history = getHistory(cmd, fuzz.index(string), fuzz)
     file.write('Server crashed after:\r\n')
     for sentCommand in range(len(history)):
       file.write(history[sentCommand] + '\r\n')
-
+    sock.close()
   file.close()
-  sock.close()
+  
 
 def writeError(file, command, Error='There was an error', wrongReturn=''):
   #this will write an error to stdout & a file
