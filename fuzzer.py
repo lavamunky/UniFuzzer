@@ -13,9 +13,9 @@ from optparse import OptionParser
 
 #import string
 supported = ['ftp'] #supported remote services
-attackChain = 0 #global variable signifying the amount of times each attack is tried(set later)
+
 servicePorts = {'ftp':21}
-fuzz = [] #the list that will contain the arguments to fuzz with. Don't really want it on the stack QED, make global
+
 #helps trying to determine where fault occurred
 ##Help from simple_dbg.py example that comes with python ptrace
 #the libraries to import
@@ -106,13 +106,14 @@ def attack():
   #Heap overflows, integer under/overflow and directory traversal
 
   attacks = ['A', '%n', '%s']
-  global fuzz
+  global fuzzString
+  fuzzString = []
   for attackElement in attacks:
     for integer in amount:
-      fuzz.append(attackElement*integer)
+      fuzzString.append(attackElement*integer)
   #so far buffer + heap under/overflows, and format string vulnerabilities covered
   for integer in range(attackChain):
-    fuzz.append('../'*integer+'etc/passwd')
+    fuzzString.append('../'*integer+'etc/passwd')
   #directory traversal covered (as long as /etc/passwd is used)
   #very unlikely you would need to go back further than attackChain amount of directories
   #integerOverflow = [-65537, -65535, -1, 0, 100, 1000, 10000, 65535, 65536, 100000]
@@ -121,7 +122,7 @@ def attack():
   #checked still a list with isinstance(fuzz, list)
   #and 'not isinstance(fuzz, basestring)'
 
-  return fuzz
+  return fuzzString
   
 def fuzz(debugger, pid, is_attached, vulnerableCommand):
   #attach the recently created process to the debugger
@@ -190,6 +191,8 @@ def genFuzzOpts2(flags):
     if options[1]!='':#if it isn't just -c : but e.g. -c :a
       argument+= '-'+options[1]
       optionsList.append(argument)
+  #print optionsList
+  #exit(1)
   return optionsList
 
 def procFork(arguments):
@@ -255,14 +258,14 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   file.write('---------------------FTP fuzzing results for host ' + ip + '---------------------\r\n')
   commandList = ['ABOR', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'APPE', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST']
   
-  correctResponse = {
+  #correctResponse = {
   
-    'ABOR': , 'CWD': , 'DELE': , 'LIST': , 'MDTM': , 'MKD': , 
-    'NLST': , 'PASS': , 'PASV': , 'PORT': , 'PWD': , 'QUIT': , 
-    'RETR': , 'RMD': , 'RNFR': , 'RNTO': , 'SITE': , 'SIZE': , 
-    'STOR': , 'TYPE': , 'USER': , 'APPE': ['150', '501'] , 'CDUP': , 'HELP': , 
-    'MODE': , 'NOOP': , 'STAT': , 'STOU': , 'STRU': , 'SYST': 
-  }
+  #  'ABOR': , 'CWD': , 'DELE': , 'LIST': , 'MDTM': , 'MKD': , 
+  #  'NLST': , 'PASS': , 'PASV': , 'PORT': , 'PWD': , 'QUIT': , 
+  #  'RETR': , 'RMD': , 'RNFR': , 'RNTO': , 'SITE': , 'SIZE': , 
+  #  'STOR': , 'TYPE': , 'USER': , 'APPE': ['150', '501'] , 'CDUP': , 'HELP': , 
+  #  'MODE': , 'NOOP': , 'STAT': , 'STOU': , 'STRU': , 'SYST': 
+  #}
 
   #peter@peter-desktop:~$ nc -nv 192.168.1.78 21
   #Connection to 192.168.1.78 21 port [tcp/*] succeeded!
@@ -479,31 +482,39 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
         while(True): #if returned code needs PASV or PORT
           sock.send(cmd + ' ' + string + '\r\n') #evil buffer
           answer = sock.recv(1024)
-          if cmd=='HELP' and fuzz.index(string)==0:
+          if cmd=='HELP' and fuzz.index(string)==0: #HELP on its own shows the available SITE commands. These also need to be fuzzed.
             temp = answer.split('\r\n')[1:-2] #get the additional site commands 
             #enter the additional site commands into the array in form 'SITE <command>'
             index = fuzz.index[cmd]+1 #get the index to insert them in (next index)
             for command in temp:
               fuzz.insert(index, 'SITE ' + command) #each command is a SITE command
-          while(True):
-          if answer[0:3]=='425':#Needs to either change, or nothing open anyway
-            if temp==False:
-              sock.send('PORT\r\n')
-              temp = True
-            else:
-              sock.send('PASV\r\n'
-              sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-              answer = sock2.recv(1024)
-              if answer[0:3]=='227':#passive mode is allowed
-                match = re.search(r'(\,\d+)+', answer) #Obtaining the numbers to calculate the port
-                (temp1, temp2) = match.group().split(',')[-2:] 
-                port = int(temp1)*256 + int(temp2) #calculating the port to connect to
-                sock2.connect((ip, port))
-                if sock2==-1:
-                  print "Socket creation failure"
-                  exit(1)
-          elif answer[0:3] not in correctResponse[cmd]: #not a correct response as per dictionary
-            file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+          connectionModeAttempts = 0
+          for x in range(2): 
+            if answer[0:3]=='425':#Needs to either change, or nothing open anyway
+              if connectionModeAttempts==0:
+                sock.send('PORT\r\n')
+                connectionModeAttempts+=1
+              elif connectionModeAttempts==1:
+                connectionModeAttempts+=1
+                sock.send('PASV\r\n')
+                sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                answer = sock2.recv(1024)
+                if answer[0:3]=='227':#passive mode is allowed
+                  match = re.search(r'(\,\d+)+', answer) #Obtaining the numbers to calculate the port
+                  (temp1, temp2) = match.group().split(',')[-2:] 
+                  port = int(temp1)*256 + int(temp2) #calculating the port to connect to
+                  sock2.connect((ip, port))
+                  if sock2==-1:
+                    print "Socket creation failure"
+                    exit(1)
+            if (sock2): #if using passive mode, check this channel too
+              answer2 = sock2.recv(1024)
+              if answer2[0:3] not in correctResponse[cmd]:
+                file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+            if answer[0:3] not in correctResponse[cmd]: #not a correct response as per dictionary
+              file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+          if connectionModeAttempts>=2:
+            break
         sock.send('QUIT\r\n')
         sock.close()
       except sock.error:
@@ -514,6 +525,41 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
           file.write(history[sentCommand] + '\r\n')
         sock.close()
   
+
+def fuzzPOP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', connected=False):
+  global fuzz
+  fuzz = attack()
+
+  fuzzedCommands = ['USER', 'PASS', 'LIST'] #more to follow
+  #3 stages of fuzzing POP3 - fuzz username, password, and then every command while authenticated
+  variableList = ['', '', ''] # for holding different fuzzes between username, password + a command to fuzz when authenticated
+  for variableToFuzz in range(len(fuzzedCommands)):
+    #first if is 1, since @ variablToFuzz==0, the USER command will be fuzzed
+    if variableToFuzz == 1: #Need username in order to fuzz password
+      variableList[0] = username
+    elif variableToFuzz > 1:
+      variableList[1] = password #variableList[0] already the correct username
+    
+    #for element in variableList:
+    for fuzzElem in range(len(fuzz)):
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      sock.connect((ip, port)) #create socket & connect to pop3 server
+      if variableToFuzz[0]==username:
+        sock.send('USER ' + username)
+        answer = sock.recv(1024)
+        if answer[:1]=='-':
+          print 'Error with username ' + username
+          exit(1)
+      if variableToFuzz[1]==password:
+        sock.send('PASS ' + password)
+        answer = sock.recv(1024)
+        if answer[:1]=='-':
+          print 'Error with password ' + password
+          exit(1)
+      #Now need to do fuzzing
+      sock.send(fuzzedCommands(variableToFuzz) + ' ' + fuzz(fuzzElem))
+      answer = sock.recv(1024)
+
 def main():
   params = len(argv)
   flags = None
@@ -528,7 +574,7 @@ def main():
   # parser.add_option("-h", action="callback", callback=usage)
   parser.add_option("-a", "--all", action="store_true", dest="all", help="Command line fuzzer, fuzzes all program parameters a-z and A-Z, and the no flag option.")
   parser.add_option("-p", "--port", type="int", dest="port", help="Port for server (if not default for service)")
-  parser.add_option("-h", "--host", action="store", type="string", dest="ip", help="Target IP address")
+  parser.add_option("-t", "--target", action="store", type="string", dest="ip", help="Target IP address")
   parser.add_option("-u", "--username", action="store", type="string", dest="username", help="Username for logging on server, enabling full fuzzing")
   parser.add_option("-w", "--password", action="store", type="string", dest="password", help="Password for logging onto server, enabling full fuzzing")
   parser.add_option("-c", action="store", type="string", dest="flags", help="Command line fuzzer, fuzzes specific program arguments.\n\r\n\rThe syntax for specifying arguments with -c is:\nThe way to specify an argument with a single hyphen is with a single colon (:) and for an argument with 2 hyphens is with 2 colons (::). This allows for arguments with a hyphen in the flag.\nAn example is (using part of the man page for Nmap):\nNmap 5.00 ( http://nmap.org )\nUsage: nmap [Scan Type(s)] [Options] {target specification}\nTARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n...\n  --dns-servers <serv1[,serv2],...>: Specify custom DNS servers\n\nIf you wanted to fuzz the parameters -iL, --exclude, --excludefile and --dns-servers, and the program Nmap is located at /usr/bin/nmap, then the command to fuzz would be \n%s -c :iL::exlude::excludefile::dns-servers /usr/bin/nmap\nIf the no flag argument needs to be fuzzed (no options), for instance doing nmap fuzzedstring, then an  extra colon needs to be added to the end. So %s -c :iL::exlude::excludefile::dns-servers: /usr/bin/nmap" % (argv[0], argv[0]))
