@@ -501,7 +501,54 @@ def actualFTPfuzz(justAuthentication=False, username, password, port, ip):
           sock.close()
   
 
-def fuzzPOPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', connected=False):
+def fuzzPOPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', toAttach=False, pid):
+  if toAttach: #local service, being attached
+    if int(pid)<0:
+      print 'Invalid PID. Make sure is correct if you want to attach a local service'
+      exit(1)
+    else:
+      #valid PID, so create debugger & attach it
+      dbg=PtraceDebugger()
+      process = dbg.addProcess(pid, is_attached)
+      is_attached = True
+      process.cont()
+      event = process.waitEvent() #not sure about should use this considering calling another method, or whether should be here or not
+      actualPOPfuzz(ip, port, username, password)
+      error = ''
+      if (isinstance(event, ProcessSignal)):
+        filename = 'POP3fuzzResultsFor'+ip
+        file = open(filename, 'w')
+        file.write('Error Found:\n')
+        file.write(error)
+        print "died with signal %i" % event.signum
+        error = signal(event.signum, vulnerableCommand)
+        print 'Next instruction:\n'
+        processInfo = "%s" % process.dumpCore(filename) #display next instruction
+        file.write('Next instruction:\n')
+        file.write(processInfo)
+        print processInfo
+        print 'Register dump:\n'
+        processInfo = "%s" % process.dumpRegs()
+        file.write('Register dump:\n')
+        file.write(processInfo)
+        print processInfo
+        print 'Stack:\n'
+        processInfo = "%s" % process.dumpStack() #display some memory words around the stack pointer
+        file.write('Stack:\n')
+        file.write(processInfo)
+        print processInfo
+        print 'Memory mappings:\n'
+        processInfo = "%s" % process.dumpMaps()#display memory mappings
+        file.write('Memory Mappings:\n')
+        file.write(processInfo)
+        print processInfo
+        file.close()
+      return error
+  else: #remote server, or local but not want debugger attached (because it would be quicker)
+    actualPOPfuzz(ip, port, username, password)
+
+
+def actualPOPfuzz(ip, port, username, password):
   global fuzz
   fuzz = attack()
   filename = 'POP3fuzzResultsFor'+ip
@@ -556,7 +603,6 @@ def fuzzPOPmain(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser',
     sock.close()
   file.close()
   
-
 def writeError(file, command, Error='There was an error', wrongReturn=''):
   #this will write an error to stdout & a file
   file.write(Error + ' ' + command)
