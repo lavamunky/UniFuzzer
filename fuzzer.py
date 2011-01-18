@@ -7,6 +7,7 @@ from ptrace.tools import locateProgram
 from string import ascii_lowercase, ascii_uppercase
 from sys import stderr, argv, exit
 import socket
+import re
 from optparse import OptionParser
 #Just learnt there's an option parser in Python, which will come in useful
 
@@ -14,6 +15,7 @@ from optparse import OptionParser
 supported = ['ftp'] #supported remote services
 attackChain = 0 #global variable signifying the amount of times each attack is tried(set later)
 servicePorts = {'ftp':21}
+fuzz = [] #the list that will contain the arguments to fuzz with. Don't really want it on the stack QED, make global
 #helps trying to determine where fault occurred
 ##Help from simple_dbg.py example that comes with python ptrace
 #the libraries to import
@@ -104,7 +106,7 @@ def attack():
   #Heap overflows, integer under/overflow and directory traversal
 
   attacks = ['A', '%n', '%s']
-  fuzz = []
+  global fuzz
   for attackElement in attacks:
     for integer in amount:
       fuzz.append(attackElement*integer)
@@ -245,124 +247,22 @@ def getHistory(cmd, index, fuzz): #fetches the last 10
   return history
 
 def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', connected=False):
+  global fuzz
   fuzz = attack()
+  fuzz.insert(0, ' ') #insert the blank argument at the start
   filename = 'ftpFuzzResultsFor'+ip
   file = open(filename, 'w')
   file.write('---------------------FTP fuzzing results for host ' + ip + '---------------------\r\n')
   commandList = ['ABOR', 'CWD', 'DELE', 'LIST', 'MDTM', 'MKD', 'NLST', 'PASS', 'PASV', 'PORT', 'PWD', 'QUIT', 'RETR', 'RMD', 'RNFR', 'RNTO', 'SITE', 'SIZE', 'STOR', 'TYPE', 'USER', 'APPE', 'CDUP', 'HELP', 'MODE', 'NOOP', 'STAT', 'STOU', 'STRU', 'SYST']
   
-  #fuzz authentication
-  for string in fuzz:
-    for num in range(1, 3): #2 different loops, for fuzzing username & password separately
-      print "Fuzzing username & password with string:" + string
-      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      if sock==-1:
-        print "Socket creation failure"
-        exit(1)
-      try:
-        connection = sock.connect((ip, port))
-      except socket.error:
-        print 'Problem connecting to host. Make sure host alive & service running on specified port'
-        exit(1)
-      answer = sock.recv(1024)
-      if answer[0:3]!='220':
-        print "Something wrong, not connected!"
-        print "Exiting..."
-        exit(1)
-      if num % 2 == 1: #need to fuzz username, and then use real username to fuzz password
-        user = string
-      else:
-        user = username
-      sock.send('USER ' + user + '\r\n') #fuzz username
-      answer = sock.recv(1024)
-      if num % 2 == 1: #just fuzzing USER + want to loop again instead of trying PASS
-        continue
-      sock.send('PASS ' + string + '\r\n') #Fuzz password
-      answer = sock.recv(1024)
-      if answer[0:3]=='230':
-        print "Password accepted! This shouldn't happen unless the user specified has a password consisting of a series of A's or a number. This will be counted as an error."
-      history = getHistory('PASS', fuzz.index(string), fuzz)
-      file.write('Server crashed after:\r\n')
-      for sentCommand in range(len(history)):
-        file.write(history[sentCommand] + '\r\n')
-      sock.close()
-
-  #Need nested for loop in order to fuzz each command easily.
-  for cmd in commandList:
-    for string in fuzz:
-      print "Fuzzing", cmd, "with string:" + string
-      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-      if sock==-1:
-        print "Socket creation failure"
-        exit(1)
-      try:
-        try:
-          connection = sock.connect((ip, port))
-        except socket.error:
-          print 'Problem connecting to host. Make sure host alive & service running on specified port'
-          exit(1)
-        answer = sock.recv(1024)
-        if answer[0:3]!='220':
-          print "Something wrong, not connected!"
-          print "Exiting..."
-          exit(1)
-        connection = sock.connect((ip, port))
-        sock.recv(1024)
-        sock.send('USER ' + username + '\r\n')
-        sock.recv(1024)
-        sock.send('PASS ' + password + '\r\n')
-        answer = sock.recv(1024)
-        if answer[0:3]=='530':
-          print 'User not accepted! Wrong username or password.'
-          exit(1)
-        sock.send(cmd + ' ' + string + '\r\n') #evil buffer
-        sock.recv(1024)
-        sock.send('QUIT\r\n')
-        sock.close()
-      except sock.error:
-        print 'Problem occurred. Service may be down.'
-        history = getHistory(cmd, fuzz.index(string), fuzz)
-        file.write('Server crashed after:\r\n')
-        for sentCommand in range(len(history)):
-          file.write(history[sentCommand] + '\r\n')
-        sock.close()
-  ###################################QUICK REFERENCE CODE RUN#################################
-  #peter@peter:~/Fuzzer $ ftp 192.168.1.78
-  #Connected to 192.168.1.78.
-  #220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------
-  #220-You are user number 1 of 50 allowed.
-  #220-Local time is now 18:11. Server port: 21.
-  #220-This is a private system - No anonymous login
-  #220-IPv6 connections are also welcome on this server.
-  #220 You will be disconnected after 15 minutes of inactivity.
-  #Name (192.168.1.78:peter): 
-  #331 User peter OK. Password required
-  #Password:
-  #530 Login authentication failed
-  #Login failed.
-  #Remote system type is UNIX.
-  #Using binary mode to transfer files.
-  #ftp> open 192.168.1.78
-  #Already connected to 192.168.1.78, use close first.
-  #ftp> disconnect
-  #221-Goodbye. You uploaded 0 and downloaded 0 kbytes.
-  #221 Logout.
-  #ftp> open 192.168.1.78
-  #Connected to 192.168.1.78.
-  #220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------
-  #220-You are user number 1 of 50 allowed.
-  #220-Local time is now 18:11. Server port: 21.
-  #220-This is a private system - No anonymous login
-  #220-IPv6 connections are also welcome on this server.
-  #220 You will be disconnected after 15 minutes of inactivity.
-  #Name (192.168.1.78:peter): ftpuser
-  #331 User ftpuser OK. Password required
-  #Password:
-  #530 Login authentication failed
-  #Login failed.
-  #Remote system type is UNIX.
-  #Using binary mode to transfer files.
-
+  correctResponse = {
+  
+    'ABOR': , 'CWD': , 'DELE': , 'LIST': , 'MDTM': , 'MKD': , 
+    'NLST': , 'PASS': , 'PASV': , 'PORT': , 'PWD': , 'QUIT': , 
+    'RETR': , 'RMD': , 'RNFR': , 'RNTO': , 'SITE': , 'SIZE': , 
+    'STOR': , 'TYPE': , 'USER': , 'APPE': ['150', '501'] , 'CDUP': , 'HELP': , 
+    'MODE': , 'NOOP': , 'STAT': , 'STOU': , 'STRU': , 'SYST': 
+  }
 
   #peter@peter-desktop:~$ nc -nv 192.168.1.78 21
   #Connection to 192.168.1.78 21 port [tcp/*] succeeded!
@@ -512,7 +412,108 @@ def fuzzFTP(ip='127.0.0.1', port=21, username='ftpuser', password='ftpuser', con
   #221 Logout.								     
   #############################################################################################
 
+  #fuzz authentication
+  for string in fuzz:
+    for num in range(1, 3): #2 different loops, for fuzzing username & password separately
+      print "Fuzzing username & password with string:" + string
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      if sock==-1:
+        print "Socket creation failure"
+        exit(1)
+      try:
+        connection = sock.connect((ip, port))
+      except socket.error:
+        print 'Problem connecting to host. Make sure host alive & service running on specified port'
+        exit(1)
+      answer = sock.recv(1024)
+      if answer[0:3]!='220':
+        print "Something wrong, not connected!"
+        print "Exiting..."
+        exit(1)
+      if num % 2 == 1: #need to fuzz username, and then use real username to fuzz password
+        user = string
+      else:
+        user = username
+      sock.send('USER ' + user + '\r\n') #fuzz username
+      answer = sock.recv(1024)
+      if num % 2 == 1: #just fuzzing USER + want to loop again instead of trying PASS
+        continue
+      sock.send('PASS ' + string + '\r\n') #Fuzz password
+      answer = sock.recv(1024)
+      if answer[0:3]=='230':
+        print "Password accepted! This shouldn't happen unless the user specified has a password consisting of a series of A's or a number. This will be counted as an error."
+      history = getHistory('PASS', fuzz.index(string), fuzz)
+      file.write('Server crashed after:\r\n')
+      for sentCommand in range(len(history)):
+        file.write(history[sentCommand] + '\r\n')
+      sock.close()
 
+  sock2 = None #may be needed later
+  #Need nested for loop in order to fuzz each command easily.
+  for cmd in commandList:
+    for string in fuzz:
+      print "Fuzzing", cmd, "with string:" + string
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      if sock==-1:
+        print "Socket creation failure"
+        exit(1)
+      try:
+        try:
+          connection = sock.connect((ip, port))
+        except socket.error:
+          print 'Problem connecting to host. Make sure host alive & service running on specified port'
+          exit(1)
+        answer = sock.recv(1024)
+        if answer[0:3]!='220':
+          print "Something wrong, not connected!"
+          print "Exiting..."
+          exit(1)
+        sock.send('USER ' + username + '\r\n')
+        sock.recv(1024)
+        sock.send('PASS ' + password + '\r\n')
+        answer = sock.recv(1024)
+        temp = False #used for infinite loop in a few lines
+        if answer[0:3]=='530':
+          print 'User not accepted! Wrong username or password.'
+          exit(1)
+        while(True): #if returned code needs PASV or PORT
+          sock.send(cmd + ' ' + string + '\r\n') #evil buffer
+          answer = sock.recv(1024)
+          if cmd=='HELP' and fuzz.index(string)==0:
+            temp = answer.split('\r\n')[1:-2] #get the additional site commands 
+            #enter the additional site commands into the array in form 'SITE <command>'
+            index = fuzz.index[cmd]+1 #get the index to insert them in (next index)
+            for command in temp:
+              fuzz.insert(index, 'SITE ' + command) #each command is a SITE command
+          while(True):
+          if answer[0:3]=='425':#Needs to either change, or nothing open anyway
+            if temp==False:
+              sock.send('PORT\r\n')
+              temp = True
+            else:
+              sock.send('PASV\r\n'
+              sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              answer = sock2.recv(1024)
+              if answer[0:3]=='227':#passive mode is allowed
+                match = re.search(r'(\,\d+)+', answer) #Obtaining the numbers to calculate the port
+                (temp1, temp2) = match.group().split(',')[-2:] 
+                port = int(temp1)*256 + int(temp2) #calculating the port to connect to
+                sock2.connect((ip, port))
+                if sock2==-1:
+                  print "Socket creation failure"
+                  exit(1)
+          elif answer[0:3] not in correctResponse[cmd]: #not a correct response as per dictionary
+            file.write('Something went wrong, ' + cmd + ' ' + string + ' responded with:\r\n' + answer + '\r\n')
+        sock.send('QUIT\r\n')
+        sock.close()
+      except sock.error:
+        print 'Problem occurred. Service may be down.'
+        history = getHistory(cmd, fuzz.index(string), fuzz)
+        file.write('Server crashed after:\r\n')
+        for sentCommand in range(len(history)):
+          file.write(history[sentCommand] + '\r\n')
+        sock.close()
+  
 def main():
   params = len(argv)
   flags = None
