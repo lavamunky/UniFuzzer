@@ -1,0 +1,16 @@
+<proto>
+<protocol val='TCP'/>
+<auth>
+<unCMD>USER<defaultun val='ftpuser'/>
+</unCMD>
+<pwCMD>PASS<defaultpw val ='ftpuser'/>
+</pwCMD>
+</auth>
+<commands>
+<cmd>GET<reply val='TRUE'/>
+<badRep>203</badRep><badRep>204</badRep>
+</cmd>
+<cmd>PUT<reply val = 'FALSE'/>
+</cmd>
+</commands>
+</proto>
