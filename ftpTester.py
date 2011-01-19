@@ -5,7 +5,7 @@ def attack():
   #use list for amounts each different attack vector (upto 65535)
   #(saves time over incrementing)
   #if find anything, if want to take error, further will need to be done manually
-  amount =[1,2,3	,4,5,10,25,50,75,100,250,500,750,1000,2000,3000,4000,5000,7500,10000,12500,15000,20000,25000]#,30000,50000,75000,10000,20000,30000,40000,50000,60000,65535]
+  amount =[1,2,3,4,5,10,25,50,75,100,250,500,750,1000,2000,3000,4000,5000,7500,10000,12500,15000,20000,25000]#,30000,50000,75000,10000,20000,30000,40000,50000,60000,65535]
   #effectively how many times each different element will be used to attack the program
   global attackChain
   attackChain = len(amount)
