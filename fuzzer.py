@@ -110,7 +110,7 @@ def attack():
   #(saves time over incrementing)
   #if find anything, if want to take error, further will need to be done manually
   #amount = [2650]
-  amount = range(0, 3000, 50) 
+  amount = range(0, 30000, 50) 
   #amount = [1,2,3,4,5,10,25,50,75,100,250,500,750,1000,2000,2500, 3000, 3500,4000, 4500,5000,5500,7500,10000,12500,15000,20000,25000]  #,30000,50000,75000,10000,20000,30000,40000,50000,60000,65535]
   #line above could be automated with a lot more values, but I think it runs out of memory with large values (possibly because of string manipulation calculations done later), meaning that I have to have balance between the amount of sizes and range of values
   #effectively how many times each different element will be used to attack the program
@@ -680,6 +680,7 @@ def fuzzOwnProtocol(file, ip):
   fullSequence = []
   default = ''
   reply = ''
+  eol='' #for special end of line symbols. Will be \r\n by default
   protocol = None
   port = None
   baseParts = root.getchildren()
@@ -695,32 +696,76 @@ def fuzzOwnProtocol(file, ip):
       tempSeq=[]
       for command in elem.getchildren():
         seqCommand=command.getchildren()
-        if len(seqCommand)==2: #then either default password & reply
-          (default, reply) = seqCommand
-          default = default.attrib.values()[0]
-          reply = reply.attrib.values()[0]
+        if len(seqCommand)==3: #default string, reply & special end of line
+          (default, reply, eol) = seqCommand
+          eol = eol.decode('string_escape')
+        elif len(seqCommand)==2: #then either default password & reply
+          default = ''
+          reply = ''
+          eol = ''
+          for cmd in seqCommand:
+            if cmd.tag=='reply':
+              reply = cmd.attrib.values()[0]
+            elif cmd.tag=='default':
+              default = cmd.attrib.values()[0]
+            elif cmd.tag=='EOL':
+              eol = cmd.attrib.values()[0]
+              eol = eol.decode('string_escape')
+            else:
+              print cmd.tag
+              print "Something wrong parsing values.\nPlease see documentation for help"
+              exit(1)
+          if reply=='':
+            reply=='FALSE'
+          elif eol=='':
+            eol='\r\n'
         elif len(seqCommand)==1: #either have value for reply or default val
           if seqCommand[0].tag=='default':
             default= seqCommand[0].attrib.values()[0]
+            eol = '\r\n'
             reply = 'FALSE'
           elif seqCommand[0].tag=='reply':
             default = ''
             reply = seqCommand[0].attrib.values()[0]
+            eol='\r\n'
+          elif seqCommand[0].tag=='EOL':
+            eol = seqCommand[0].attrib.values()[0]
+            eol = eol.decode('string_escape')
+            reply = 'FALSE'
+            default = ''
           else:
             print "Problem parsing file. Please read docs for more info."
+            exit(1)
         else:
           default = ''
           reply = 'FALSE'
-        tempSeq.append([command.text, default, reply]) #add the command, a default input & whether it needs a reply (only first mandatory)
+          eol='\r\n'
+        tempSeq.append([command.text, default, reply, eol]) #add the command, a default input & whether it needs a reply (only first mandatory)
       fullSequence.append(tempSeq)
       cmdOrder.append(1)
+      print eol.encode('string_escape')
     elif elem.tag=='commands': #commands that don't have to go in a particular sequence
       for command in elem.getchildren():
-        if len(command.getchildren())==1: #reply
+        if len(command.getchildren())==2: #reply & end of line symbol
           reply=command.getchildren()[0].attrib.values()[0]
+          eol=command.getchildren()[1].attrib.values()[0]          
+          eol = eol.decode('string_escape')
+        elif len(command.getchildren())==1: #reply or end of line symbol
+          if command.getchildren()[0].tag=='reply':
+            reply=command.getchildren()[0].attrib.values()[0]
+            eol='\r\n'
+          elif command.getchildren()[0].tag=='EOL':
+            reply='FALSE'
+            eol=command.getchildren()[0].attrib.values()[0]
+            eol = eol.decode('string_escape')
+          else:
+            print 'Problem found with tag '+ command.getchildren()[0].tag
+            exit(1)
         else:
           reply='FALSE'
-        fullSequence.append([command.text, reply])
+          eol='\r\n'
+        
+        fullSequence.append([command.text, reply, eol])
         cmdOrder.append(0)
     else:
       print "Something wrong parsing file. Please see docs for more info."
@@ -731,7 +776,7 @@ def fuzzOwnProtocol(file, ip):
   elif port=='':
     print "No port specified, or specified incorrectly. Please see documentation for help."
     exit(1)
-
+  
   #this will effectively act as a pointer to a function, so that I can just call a single function, which will call different functions
   func_map = {'TCP' : sendTCP, 'UDP' : sendUDP}
 
@@ -746,53 +791,60 @@ def fuzzOwnProtocol(file, ip):
         for elem in fuzz:
           if protocol=='TCP':
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((address, port))
-            sock.recv(1024) #presumes all ASCII based protocols start off receiving something
+            sock.connect((ip, port))
+            answer = sock.recv(1024) #presumes that every TCP connection is initially sent something (as far as I know it is)
+            print answer
           elif protocol=='UDP':
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
           command = fullSequence[index][commandIndex]
-          sendSequence(index, fullSequence, commandIndex, protocol, sock, port, ip)
-          info = [sock, command[0], elem, command[2], port, ip] #port & ip needed for UDP connection
+          #print command[3].encode('string_escape')
+          #continue
+          if command[3]=='': #pretty much a debugging part. 
+            print 'Something wrong, End of Line symbol is blank.'
+            exit(1)
+          #sendSequence(index, fullSequence, commandIndex, protocol, sock, port, ip)
+          info = [sock, command[0], elem, command[3], command[2], port, ip] #port & ip needed for UDP connection
           #what sendTCP or sendUDP is expecting. sockfd, the command, string sending with command & whether need a reply or not
           func_map[protocol](info)
-          #print command[0] + " " + elem + "\nReply: " + command[2] + "\n\n"
 
     else:
       for elem in fuzz:
         if protocol=='TCP':
           sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
           sock.connect((address, port))
-          sock.recv(1024) #presumes that every TCP connection is initially sent something (as far as I know it is)
+          answer = sock.recv(1024) #presumes that every TCP connection is initially sent something (as far as I know it is)
+          print answer
         elif protocol=='UDP':
           sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         for commandIndex in range(index):
           if cmdOrder[commandIndex]==1: #if there is a sequence before this command, perform that sequence before, i.e. logging in  
             sendSequence(commandIndex, fullSequence, len(fullSequence[commandIndex]), protocol, sock, port, ip) #go through any sequence before this command can be done
-        func_map[protocol]([sock, fullSequence[index][0], elem, fullSequence[index][1], port, ip])
+        func_map[protocol]([sock, fullSequence[index][0], elem, fullSequence[index][2], fullSequence[index][1], port, ip])
         #print fullSequence[index][0] + " " + elem + "\nReply: " + fullSequence[index][1] + "\n\n" 
-    if proto=='TCP':
-    #need to close TCP connection after fuzzing
-    sock.close()
+    if protocol=='TCP':
+      #need to close TCP connection after fuzzing
+      sock.close()
 
 
 def sendSequence(index, fullSequence, commandIndex, protocol, sock, port, ip):
   for prevCMDs in range(commandIndex): #loop through previous parts of sequence
     info = [sock] + fullSequence[index] + [port, ip]
     func_map[protocol](info)
-    #print fullSequence[index][prevCMDs][0] + " " + fullSequence[index][prevCMDs][1] + "\nReply: " + fullSequence[index][prevCMDs][2]
     #loop through to get the start of the sequence correct
     #this is because you have a password you need a username, or you need an HELO first, then blah blah
 
 def sendTCP(info):
   #info is a list with the socket object, ip address, port, & whether it's expecting a reply
   sock = info[0]
-  message = info[1] + " " + info[2] + "\r\n"
+
+  message = info[1] + " " + info[2] + info[3]
+  print "Sending: " + message
   sock.send(message)
-  answer = None
-  if info[3] == 'TRUE':
+  if info[-3] == 'TRUE':
     #expecting a reply
+    print "Listening..."
     answer = sock.recv(1024)
+    print answer
 
 
 def sendUDP(info):
@@ -800,7 +852,8 @@ def sendUDP(info):
   sock = info[0]
   address = info[-1]
   port = info[-2]
-  message = info[1] + " " + info[2] + "\r\n" #this presume that every ASCII based protocol has a line delimited of \r\n
+  message = info[1] + " " + info[2] + info[3] 
+  print "Sending: " + message
   sock.sendto(message, (address, port))
 
 def writeError(file, command, Error, wrongReturn):
@@ -852,23 +905,28 @@ def main():
     fuzzProg(arguments, lastParam)
     exit(1)
   elif (options.frameworkFile):
-    if not (options.target):
+    if not (options.ip):
       print "A target needs to be specified for a user-specified protocol."
       exit(1)
-    fuzzOwnProtocol(frameworkFile, ip)
+    ip=options.ip
+    fuzzOwnProtocol(options.frameworkFile, ip)
     exit(1)
-  elif not (options.port): #no port specified. Set port to standard for service
+  if not (options.port): #no port specified. Set port to standard for service
     if lastParam in supported: #if the last argument is a supported service
       port = servicePorts[lastParam]
     else:
       usage()
+  else:
+    port=options.port
   ip = options.ip
   #so now if not command line fuzzer, & now have port
   if ip: #remote service fuzzer
     print "Fuzzing service at", ip
     #make sure is a valid IP address using regex
     match = re.search(r'([0-9]+\.)+[0-9]+', ip) 
-
+    if not match:
+      print 'Invalid IP'
+      exit(1)
     #Not 100% guaranteed to be valid IP, but will do in favour of having a long regular expression 
     if lastParam not in supported:
       print 'Need supported protocol'
@@ -895,6 +953,8 @@ def main():
     elif lastParam == 'pop3':
       fuzzPOPmain(ip, port, options.username, options.password, attachRemote, local)
       exit(1)
+  else:
+    usage()
       
 
 if __name__=='__main__':
