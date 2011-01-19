@@ -5,6 +5,7 @@ import socket
 
 
 def main():
+  boolDict = {'TRUE': True, 'FALSE': False}
   fuzz = ['A', 'AAAAAAAAAAAAAAA']
   file = 'FTPtest.xml'
   tree = ElementTree.parse(file)
@@ -13,6 +14,23 @@ def main():
   passReply = None
   realCMDList = []
   realAuthCMDList = []
+  if len(root.getchildren())==5 and root.getchildren()[2]=='conn':
+    #need certain commands to connect properly other than authorisation
+    conn = root.getchildren()[2]
+    connInit = []
+    stdReps = []
+    for cmd in conn.getchildren():
+      if len(cmd.getchildren)!=0: #then has replies or stdRep
+        
+        if cmd.getchildren()[0].tag=='reply':
+          reply = boolDict[cmd.getchildren()[0].attrib['val']]
+          if len(cmd.getchildren)>1: #has some standard replies
+            for replies in cmd.getchildren[1:]:
+              stdReps.append(replies)
+          
+        else:
+          reply = False
+          
   if root.getchildren()[2].tag != 'auth':
     #if no authorisation part, and list isn't length 3, then something is configured wrong.
     #Need at minimum the protocol to connect, the port & some commands to fuzz
@@ -63,6 +81,7 @@ def main():
       if reply != 'TRUE' and reply != 'FALSE':
         print 'Each command must have a value for reply of either TRUE or FALSE as long as using TCP'
         exit(1)
+      reply
       stdReplies = []
       for stdReply in cmd.getchildren()[1:]:
         stdReplies.append(stdReply.text)

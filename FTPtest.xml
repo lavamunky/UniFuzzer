@@ -1,6 +1,9 @@
 <proto>
 <protocol>TCP</protocol>
 <port>21</port>
+<conn>
+<cmd>Whatever<reply val='TRUE'/><stdRep>200</stdRep></cmd>
+</conn>
 <auth>
 <unCMD>USER<defaultun val='ftpuser'/><reply val='TRUE'/>
 </unCMD>

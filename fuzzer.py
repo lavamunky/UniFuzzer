@@ -311,7 +311,7 @@ def fuzzFTPmain(ip, port, username, password, toAttach, pid):
         #print event
         #fuzz(debugger, pid, is_attached, vulnerableCommand)
     else:
-      print 'If connecting a server, need a valid IP, otherwise set 4th arguments to False'
+      print 'If connecting a server, need a valid PID, otherwise set 4th arguments to False'
       exit(1)
   else: #not attaching
     actualFTPfuzz(True, username, password, port, ip)
@@ -592,9 +592,9 @@ def actualPOPfuzz(ip, port, username, password):
         answer = sock.recv(1024)
         if fuzzedCommands(variableToFuzz)=='RSET' or fuzzedCommands(variableToFuzz)=='NOOP':
           if answer[:1]=='-':
-            writeError(file, sentCommand, 'There was an error')
+            writeError(file, sentCommand, 'There was an error', '\n')
         if answer[:1]=='+':
-          writeError(file, sentCommand, 'There seems to be an error')
+          writeError(file, sentCommand, 'There seems to be an error', '\n')
         sock.close()
   except sock.error:
     print 'Problem occurred. Service may be down.'
@@ -606,6 +606,7 @@ def actualPOPfuzz(ip, port, username, password):
   file.close()
 
 def fuzzOwnProtocol(file, address):
+  boolDict = {'TRUE':True, 'FALSE':False}
   fuzz = attack()
   try:
     tree = ElementTree.parse(file)
@@ -615,9 +616,27 @@ def fuzzOwnProtocol(file, address):
   root = tree.getroot()
   userReply = None
   passReply = None
+  connInit = []
   realCMDList = []
   realAuthCMDList = []
-  if root.getchildren()[2].tag != 'auth':
+  firstIndex = 2 #index needs to change depending if there is special connection sequence and/or authorisation
+  if len(root.getchildren())==5 and root.getchildren()[firstIndex]=='conn':
+    firstIndex = firstIndex + 1
+    #need certain commands to connect properly other than authorisation
+    conn = root.getchildren()[2]
+    for cmd in conn.getchildren():
+      stdReps = []
+      if len(cmd.getchildren)!=0: #then has replies or stdRep
+        if cmd.getchildren()[0].tag=='reply':
+          reply = boolDict[cmd.getchildren()[0].attrib['val']]
+          if len(cmd.getchildren)>1: #has some standard replies
+            for replies in cmd.getchildren[1:]:
+              stdReps.append(replies)
+        else:
+          reply = False
+      connInit.append([cmd.text, reply, stdReps])
+          
+  if root.getchildren()[firstIndex].tag != 'auth':
     #if no authorisation part, and list isn't length 3, then something is configured wrong.
     #Need at minimum the protocol to connect, the port & some commands to fuzz
     if len(root.getchildren())!=3:
@@ -663,10 +682,7 @@ def fuzzOwnProtocol(file, address):
   cmdList = commands.getchildren()
   for cmd in cmdList:
     if proto == 'TCP':
-      reply = cmd.getchildren()[0].attrib.values()[0]
-      if reply != 'TRUE' and reply != 'FALSE':
-        print 'Each command must have a value for reply of either TRUE or FALSE as long as using TCP'
-        exit(1)
+      reply = boolDict[cmd.getchildren()[0].attrib.values()[0]]
       stdReplies = []
       for stdReply in cmd.getchildren()[1:]:
         stdReplies.append(stdReply.text)
@@ -693,40 +709,46 @@ def fuzzOwnProtocol(file, address):
   except IOError:
     print "Problem opening file"
     exit(1)
-  #this type of fuzzer will just go through every permutation automatically without a whole lot of checking,
-  #even if connection closed, will not restart it again, meaning that it cannot fuzz commands that will close a TCP connection
-  for cmd in realAuthCMDList:
-    for fuzzElem in fuzz:
-      fullCommand = cmd[0] + ' ' + fuzzElem
-      info = [sock, address, port, cmd[1]] #TCP & UDP need different things, but this saves time over separately making separate functions for each
-      reply = func_map[proto](info, fullCommand)
-      #check if reply is 1 of the correct replies we should get, if not report it to the file.
-      #The files will be very large if the standard reply was wrong, or if none were given. 
-      for answer in cmd[2]: 
-        #have to account for not exact answers
-        #for example with FTP, reply is determined by a code, but the program can specify a sentence with this
-        #so if the person who specified just put the code, this will check the for the code (which should always be at the start)
-        if reply[:len(answer)] != answer:
-          writeError(fileToWrite, fullCommand, '', reply)
+  try:
+    #this type of fuzzer will just go through every permutation automatically without a whole lot of checking,
+    #even if connection closed, will not restart it again, meaning that it cannot fuzz commands that will close a TCP connection
+    introCMDList = connInit + realAuthCMDList
+    for cmd in introCMDList:
+      for fuzzElem in fuzz:
+        fullCommand = cmd[0] + ' ' + fuzzElem
+        info = [sock, address, port, cmd[1]] #TCP & UDP need different things, but this saves time over separately making separate functions for each
+        reply = func_map[proto](info, fullCommand)
+        #check if reply is 1 of the correct replies we should get, if not report it to the file.
+        #The files will be very large if the standard reply was wrong, or if none were given. 
+        for answer in cmd[2]: 
+          #have to account for not exact answers
+          #for example with FTP, reply is determined by a code, but the program can specify a sentence with this
+          #so if the person who specified just put the code, this will check the for the code (which should always be at the start)
+          if reply[:len(answer)] != answer:
+            writeError(fileToWrite, fullCommand, '', reply)
 
-  for cmd in realCMDList:
-    #try to login for each command fuzzed
-    for authCMD in realAuthCMDList:
-      fullCommand = authCMD[0] + " " + authCMD[-1]
+    for cmd in realCMDList:
       info = [sock, address, port, cmd[1]]
-      reply = func_map[proto](info, fullCommand)
-    for fuzzElem in fuzz:
-      info = [sock, address, port, cmd[1]]
-      fullCommand = cmd[0] + " " + fuzzElem
-      reply = func_map[proto](info, fullCommand)
-      for answer in cmd[2]:
-        if reply[:len(answer)] != answer:
-          writeError(fileToWrite, fullCommand, '', reply)
-
+      #do any special connection sequence
+      for connCMD in connInit:
+        fullCommand = connCMD[0]
+      #try to login for each command fuzzed
+      for authCMD in realAuthCMDList:
+        fullCommand = authCMD[0] + " " + authCMD[-1] #authorise so can fuzz other commands
+        reply = func_map[proto](info, fullCommand)
+      for fuzzElem in fuzz:
+        fullCommand = cmd[0] + " " + fuzzElem
+        reply = func_map[proto](info, fullCommand) #fuzz commands
+        for answer in cmd[2]:
+          if reply[:len(answer)] != answer:
+            writeError(fileToWrite, fullCommand, '', reply)
+  except Exception, Inst:
+    writeError(fileToWrite, fullCommand, '', Inst)
   if proto=='TCP':
     #need to close TCP connection after fuzzing
     sock.close()
   fileToWrite.close()
+
 
 def sendTCP(info, message):
   #info is a list with the socket object, ip address, port, & whether it's expecting a reply
