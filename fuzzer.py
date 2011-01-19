@@ -605,8 +605,13 @@ def actualPOPfuzz(ip, port, username, password):
     sock.close()
   file.close()
 
-def fuzzOwnProtocol(file):
-  tree = ElementTree.parse(file)
+def fuzzOwnProtocol(file, address):
+  fuzz = attack()
+  try:
+    tree = ElementTree.parse(file)
+  except Exception, inst:
+    print "Unexpected error opening %s : %s" % (file, inst)
+    exit(1)
   root = tree.getroot()
   userReply = None
   passReply = None
@@ -622,37 +627,32 @@ def fuzzOwnProtocol(file):
   else:
     #depending on if authorisation needed within protocol
     (protocol, port, auth, commands) = root.getchildren()
-    unCMD = None
     #the children of <auth>
-    if len(auth.getchildren())==1:
-      pwCMD = auth.getchildren()[0]
-    else:
-      (unCMD, pwCMD) = auth.getchildren()
-      userCMD = unCMD.text
-      #getiterator gets the different occurrences of it used (in this case with the .text & with the value)
-      #need correct username & password for fuzzing authenticated
-      defaultUser = unCMD.getiterator()[1].attrib.values()[0]
-      #if it says if there's a reply or not (since optional)
-      #but could also be more if there are a number of 
-    if unCMD:
-      if len(unCMD.getiterator())>2 and unCMD.getiterator()[2].tag == 'reply' and protocol.text == 'TCP':
-        userReply = unCMD.getiterator()[2].attrib.values()[0]
-        if len(unCMD.getiterator())==4: #then know a std reply should get while fuzzing
-          realAuthCMDList.append([userCMD, userReply, [unCMD.getiterator()[3].text]])
-        else:
-          realAuthCMDList.append([userCMD, userReply, []])
+    (unCMD, pwCMD) = auth.getchildren()
+    userCMD = unCMD.text
+    #getiterator gets the different occurrences of it used (in this case with the .text & with the value)
+    #need correct username & password for fuzzing authenticated
+    defaultUser = unCMD.getiterator()[1].attrib.values()[0]
+    #if it says if there's a reply or not (since optional)
+    #but could also be more if there are a number of 
+    if len(unCMD.getiterator())>2 and unCMD.getiterator()[2].tag == 'reply' and protocol.text == 'TCP':
+      userReply = unCMD.getiterator()[2].attrib.values()[0]
+      if len(unCMD.getiterator())==4: #then know a std reply should get while fuzzing
+        realAuthCMDList.append([userCMD, userReply, [unCMD.getiterator()[3].text], defaultUser])
       else:
-        realAuthCMDList.append([userCMD, False, []])
+        realAuthCMDList.append([userCMD, userReply, [], defaultUser])
+    else:
+      realAuthCMDList.append([userCMD, False, [], defaultUser])
     passwdCMD = pwCMD.text
     defaultPass = pwCMD.getiterator()[1].attrib.values()[0]
     if len(pwCMD.getiterator())>2 and unCMD.getiterator()[2].tag == 'reply' and protocol.text == 'TCP':
       passReply = pwCMD.getiterator()[2].attrib.values()[0]
       if len(pwCMD.getiterator())==4: #then know a std reply should get while fuzzing
-        realAuthCMDList.append([passwdCMD, passReply, [pwCMD.getiterator()[3].text]])
+        realAuthCMDList.append([passwdCMD, passReply, [pwCMD.getiterator()[3].text], defaultPass])
       else:
-        realAuthCMDList.append([passwdCMD, passReply, []])
+        realAuthCMDList.append([passwdCMD, passReply, [], defaultPass])
     else:
-      realAuthCMDList.append([passwdCMD, False, []])
+      realAuthCMDList.append([passwdCMD, False, [], defaultPass])
   proto = protocol.text  
   if proto != 'TCP' and proto != 'UDP':
     print 'Invalid protocol specified. Only TCP & UDP (case sensitive) possible to use'
@@ -675,7 +675,6 @@ def fuzzOwnProtocol(file):
     else: #UDP
       for cmd in cmdList:
         realCMDList.append([cmd.text, False, []])
-  #print realCMDList #-----------TESTING PURPOSES ONLY-----------------
   #now in form [['GET', ['203', '204']]] - array of arrays with the command & replies we should get from the result (if any reply)
   #now have the protocol being used, any authentication needed (with username & password which can be used for authenticating), any commands
   #and the replies I should get from the system usually (e.g. can't read ../../etc/passwd)
@@ -684,27 +683,72 @@ def fuzzOwnProtocol(file):
     sock.connect((address, port))
   elif proto=='UDP':
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  
+  #this will effectively act as a pointer to a function, so that I can just call a single function, which will call different functions
   func_map = {'TCP' : sendTCP, 'UDP' : sendUDP}
+  
+  filename = 'UserSpecifiedProtocolResults'
+  try:
+    fileToWrite = open(filename, 'w')
+  except IOError:
+    print "Problem opening file"
+    exit(1)
+  #this type of fuzzer will just go through every permutation automatically without a whole lot of checking,
+  #even if connection closed, will not restart it again, meaning that it cannot fuzz commands that will close a TCP connection
+  for cmd in realAuthCMDList:
+    for fuzzElem in fuzz:
+      fullCommand = cmd[0] + ' ' + fuzzElem
+      info = [sock, address, port, cmd[1]] #TCP & UDP need different things, but this saves time over separately making separate functions for each
+      reply = func_map[proto](info, fullCommand)
+      #check if reply is 1 of the correct replies we should get, if not report it to the file.
+      #The files will be very large if the standard reply was wrong, or if none were given. 
+      for answer in cmd[2]: 
+        #have to account for not exact answers
+        #for example with FTP, reply is determined by a code, but the program can specify a sentence with this
+        #so if the person who specified just put the code, this will check the for the code (which should always be at the start)
+        if reply[:len(answer)] != answer:
+          writeError(fileToWrite, fullCommand, '', reply)
+
+  for cmd in realCMDList:
+    #try to login for each command fuzzed
+    for authCMD in realAuthCMDList:
+      fullCommand = authCMD[0] + " " + authCMD[-1]
+      info = [sock, address, port, cmd[1]]
+      reply = func_map[proto](info, fullCommand)
+    for fuzzElem in fuzz:
+      info = [sock, address, port, cmd[1]]
+      fullCommand = cmd[0] + " " + fuzzElem
+      reply = func_map[proto](info, fullCommand)
+      for answer in cmd[2]:
+        if reply[:len(answer)] != answer:
+          writeError(fileToWrite, fullCommand, '', reply)
+
+  if proto=='TCP':
+    #need to close TCP connection after fuzzing
+    sock.close()
+  fileToWrite.close()
 
 def sendTCP(info, message):
   #info is a list with the socket object, ip address, port, & whether it's expecting a reply
   sock = info[0]
   sock.send(message)
   answer = None
-  if info[-1] == True:
+  if info[3] == 'TRUE':
     #expecting a reply
     answer = sock.recv(1024)
   return answer
 
 def sendUDP(info, message):
   #info is a list with different things in depending on whether TCP  or UDP being used
-  address = info[0]
-  port = info[1]
+  address = info[1]
+  port = info[2]
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sock.sendto(message, (address, port))
   return None
 
-def writeError(file, command, Error='There was an error', wrongReturn=''):
+def writeError(file, command, Error, wrongReturn):
+  if Error == '':
+    Error='There was an error'
   #this will write an error to stdout & a file
   file.write(Error + ' ' + command)
   print Error + ' ' + command
@@ -734,6 +778,7 @@ def main():
   parser.add_option("-t", "--target", action="store", type="string", dest="ip", help="Target IP address")
   parser.add_option("-u", "--username", action="store", type="string", dest="username", help="Username for logging on server, enabling full fuzzing", default="username")
   parser.add_option("-w", "--password", action="store", type="string", dest="password", help="Password for logging onto server, enabling full fuzzing", default="password")
+  parser.add_option("f", "--framework", action="store", type="string", dest="frameworkFile", help="File for specifying a user-specified protocol. See documentation for details.")
   parser.add_option("-c", action="store", type="string", dest="flags", help="Command line fuzzer, fuzzes specific program arguments.\n\r\n\rThe syntax for specifying arguments with -c is:\nThe way to specify an argument with a single hyphen is with a single colon (:) and for an argument with 2 hyphens is with 2 colons (::). This allows for arguments with a hyphen in the flag.\nAn example is (using part of the man page for Nmap):\nNmap 5.00 ( http://nmap.org )\nUsage: nmap [Scan Type(s)] [Options] {target specification}\nTARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n...\n  --dns-servers <serv1[,serv2],...>: Specify custom DNS servers\n\nIf you wanted to fuzz the parameters -iL, --exclude, --excludefile and --dns-servers, and the program Nmap is located at /usr/bin/nmap, then the command to fuzz would be \n%s -c :iL::exlude::excludefile::dns-servers /usr/bin/nmap\nIf the no flag argument needs to be fuzzed (no options), for instance doing nmap fuzzedstring, then an  extra colon needs to be added to the end. So %s -c :iL::exlude::excludefile::dns-servers: /usr/bin/nmap" % (argv[0], argv[0]))
   (options, args) = parser.parse_args()
   lastParam = argv[params-1]
@@ -748,6 +793,12 @@ def main():
   elif (options.flags):
     arguments = genFuzzOpts2(options.flags)
     fuzzProg(arguments, lastParam)
+    exit(1)
+  elif (options.frameworkFile):
+    if not (options.target):
+      print "A target needs to be specified for a user-specified protocol."
+      exit(1)
+    fuzzOwnProtocol(frameworkFile, ip)
     exit(1)
   elif not port: #no port specified. Set port to standard for service
     if lastParam in supported: #if the last argument is a supported service
@@ -781,7 +832,6 @@ def main():
       fuzzPOP(ip, port, username, password, attachRemote, local)
       exit(1)
       
-    
 
 if __name__=='__main__':
   main()

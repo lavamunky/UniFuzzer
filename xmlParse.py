@@ -3,7 +3,9 @@ from sys import exit
 from xml.etree import ElementTree
 import socket
 
+
 def main():
+  fuzz = ['A', 'AAAAAAAAAAAAAAA']
   file = 'FTPtest.xml'
   tree = ElementTree.parse(file)
   root = tree.getroot()
@@ -79,21 +81,64 @@ def main():
     sock.connect((address, port))
   elif proto=='UDP':
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  
+  #this will effectively act as a pointer to a function, so that I can just call a single function, which will call different functions
   func_map = {'TCP' : sendTCP, 'UDP' : sendUDP}
+  
+  filename = 'UserSpecifiedProtocolResults'
+  try:
+    fileToWrite = open(filename, 'w')
+  except IOError:
+    print "Problem opening file"
+  #this type of fuzzer will just go through every permutation automatically without a whole lot of checking,
+  #even if connection closed, will not restart it again, meaning that it cannot fuzz commands that will close a TCP connection
+  for cmd in realAuthCMDList:
+    for fuzzElem in fuzz:
+      fullCommand = cmd[0] + ' ' + fuzzElem
+      info = [sock, address, port, cmd[1]] #TCP & UDP need different things, but this saves time over separately making separate functions for each
+      reply = func_map[proto](info, fullCommand)
+      #check if reply is 1 of the correct replies we should get, if not report it to the file.
+      #The files will be very large if the standard reply was wrong, or if none were given. 
+      for answer in cmd[2]: 
+        #have to account for not exact answers
+        #for example with FTP, reply is determined by a code, but the program can specify a sentence with this
+        #so if the person who specified just put the code, this will check the for the code (which should always be at the start)
+        if reply[:len(answer)] != answer:
+          writeError(fileToWrite, fullCommand, '', reply)
+
+  for cmd in realCMDList:
+    #try to login for each command fuzzed
+    for authCMD in realAuthCMDList:
+      fullCommand = authCMD[0] + " " + authCMD[-1]
+      info = [sock, address, port, cmd[1]]
+      reply = func_map[proto](info, fullCommand)
+    for fuzzElem in fuzz:
+      info = [sock, address, port, cmd[1]]
+      fullCommand = cmd[0] + " " + fuzzElem
+      reply = func_map[proto](info, fullCommand)
+      for answer in cmd[2]:
+        if reply[:len(answer)] != answer:
+          writeError(fileToWrite, fullCommand, '', reply)
+
+  if proto=='TCP':
+    #need to close TCP connection after fuzzing
+    sock.close()
+  fileToWrite.close()
 
 def sendTCP(info, message):
   #info is a list with the socket object, ip address, port, & whether it's expecting a reply
   sock = info[0]
   sock.send(message)
   answer = None
-  if info[-1] == True:
+  if info[3] == 'TRUE':
     #expecting a reply
     answer = sock.recv(1024)
   return answer
+
 def sendUDP(info, message):
   #info is a list with different things in depending on whether TCP  or UDP being used
-  address = info[0]
-  port = info[1]
+  address = info[1]
+  port = info[2]
   sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sock.sendto(message, (address, port))
   return None
