@@ -1,0 +1,14 @@
+<proto>
+<protocol>TCP</protocol>
+<port>25</port>
+<seq>
+<cmd>HELO<default val='bob.lavasec.com'/><reply val='TRUE'/></cmd>
+<cmd>MAIL FROM:<default val='&lt;bob@lavasec.com&gt;'/><reply val='TRUE'/></cmd>
+<cmd>RCPT TO:<default val ='&lt;bob2@lavasec.com&gt;'/><reply val='TRUE'/></cmd>
+<cmd>DATA<reply val='TRUE'/></cmd>
+<cmd>From:<default val='ME! &lt;bob@lavasec.com&gt;'/><reply val='FALSE'/></cmd>
+<cmd>To:<default val='ME2! &lt;bob2@lavasec.com&gt;'/></cmd>
+<cmd>Subject:<default val='Hello!'/></cmd>
+<cmd>\n<reply val='TRUE'/><EOL val='\r\n.\r\n'/></cmd>
+</seq>
+</proto>
