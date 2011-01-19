@@ -747,6 +747,7 @@ def fuzzOwnProtocol(file, ip):
           if protocol=='TCP':
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((address, port))
+            sock.recv(1024) #presumes all ASCII based protocols start off receiving something
           elif protocol=='UDP':
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
