@@ -62,32 +62,42 @@ def signal(signalVal, command):
   #print "SIGABRT:", SIGABRT, "SIGBUS:", SIGBUS, "SIGCHLD:", SIGCHLD, "SIGFPE:", SIGFPE, "SIGSEGV:", SIGSEGV
   if signalVal == SIGABRT:
     error =  "*****************************PROCESS WAS ABORTED*****************************\n"
-    error+="Something went wrong, but unable to determine reasoning. Could be handled signal from program, or compiler of program may have stack-smashing protection. GCC3.4 and above have this (version can be determined by gcc -v)."
+    error+="Something went wrong, but unable to determine reasoning. Could be handled signal from program, or compiler of program may have stack-smashing protection. GCC3.4 and above have this (version can be determined by gcc -v).\n"
   elif signalVal == SIGIOT:
     error =  "*****************************PROCESS WAS ABORTED*****************************\n"
-    error+="Something went wrong, but unable to determine reasoning. Could be handled signal from program, or compiler of program may have stack-smashing protection. GCC3.4 and above have this (version can be determined by gcc -v)."
+    error+="Something went wrong, but unable to determine reasoning. Could be handled signal from program, or compiler of program may have stack-smashing protection. GCC3.4 and above have this (version can be determined by gcc -v).\n"
   elif signalVal == SIGBUS:
-    error = "*****************************PROCESS CREATED A BUS ERROR*****************************"
+    error = "*****************************PROCESS CREATED A BUS ERROR*****************************\n"
   elif signalVal == SIGCHLD:
-    error = "*****************************CHILD PROCESS TERMINATED*****************************"
+    error = "*****************************CHILD PROCESS TERMINATED*****************************\n"
+    error += "This could be a serious error with the child. Further investigation with a fully featured debugger to determine problem with child process.\n"
   elif signalVal == SIGCLD:
-    error = "*****************************CHILD PROCESS TERMINATED*****************************"
+    error = "*****************************CHILD PROCESS TERMINATED*****************************\n"
   elif signalVal == SIGFPE:
-    error =  "*****************************PROCESS DIVISION BY 0*****************************"
+    error =  "*****************************PROCESS DIVISION BY 0*****************************\n"
+    error += "This could possibly be a case where there was no argument given when expecting one, or possibly a integer underflow/overflow.\n"
   elif signalVal == SIGSEGV:
-    error =  "*****************************SEGMENTATION FAULT*****************************"
+    error =  "*****************************SEGMENTATION FAULT*****************************\n"
+    error += "A standard buffer overflow causes a segmentation fault. However, many other problems can also cause a segmentation fault, such as integer underflow/overflow, heap overflow and format string vulnerabilities.\n"
   elif signalVal == SIGILL:
-    error =  "*****************************ILLEGAL INSTRUCTION*****************************"
+    error =  "*****************************ILLEGAL INSTRUCTION*****************************\n"
+    error += "This could mean that a buffer overflow is imminent and the Instruction Pointer (points to the next instruction in the program) has been overwritten or partially overwritten. This could also be caused by other vulnerabilities, such as a format string vulnerability.\n "
   elif signalVal == SIGQUIT:
-    error =  "*****************************PROGRAM QUIT (CORE DUMPED)*****************************"
+    error =  "*****************************PROGRAM QUIT (CORE DUMPED)*****************************\n"
+    error += "Not able to determine the error. Could be partly a operating system problem, or a partial instruction pointer overwrite lead the program to run other code which caused the core dump. Investigation of problem needed.\n"
   elif signalVal == SIGTERM:
-    error = "*****************************PROGRAM TERMINATED*****************************"
+    error = "*****************************PROGRAM TERMINATED*****************************\n"
+    error += "The program terminated. This could be caused by many vulnerabilities. The program may have handled the exception and then quit. Further investigation into the problem needed.\n"
   elif signalVal == SIGUSR1:
-    error = "*****************************USER DEFINED SIGNAL CALLED*****************************"
+    error = "*****************************USER DEFINED SIGNAL CALLED*****************************\n"
+    error += "This is a user defined signal. Further investigation into problem needed.\n"
   elif signalVal == SIGUSR2:
-    error = "*****************************USER DEFINED SIGNAL CALLED*****************************"
+    error = "*****************************USER DEFINED SIGNAL CALLED*****************************\n"
+    error += "This is a user defined signal. Further investigation into problem needed.\n"
   else:
-    error =  "*********************** NO IDEA ******************************"
+    error =  "*********************** ERROR CALLED BUT CANNOT DETERMINE ******************************\n"
+    error += "This is a user defined signal. Further investigation into problem needed.\n"
+
   vulnerableCommand = "Vulnerable command is: "
   for elem in command:
     vulnerableCommand = vulnerableCommand + elem + " "
@@ -99,7 +109,8 @@ def attack():
   #use list for amounts each different attack vector (upto 65535)
   #(saves time over incrementing)
   #if find anything, if want to take error, further will need to be done manually
-  amount = [1,2,3	,4,5,10,25,50,75,100,250,500,750,1000,2000,3000,4000,5000,7500,10000,12500,15000,20000,25000]#,30000,50000,75000,10000,20000,30000,40000,50000,60000,65535]
+  amount = [1,2,3	,4,5,10,25,50,75,100,250,500,750,1000,2000,3000,4000,5000,7500,10000,12500,15000,20000,25000]  #,30000,50000,75000,10000,20000,30000,40000,50000,60000,65535]
+  #line above could be automated with a lot more values, but I think it runs out of memory with large values (possibly because of string manipulation calculations done later), meaning that I have to have balance between the amount of sizes and range of values
   #effectively how many times each different element will be used to attack the program
   global attackChain
   attackChain = len(amount)
@@ -118,8 +129,13 @@ def attack():
     fuzzString.append('../'*integer+'etc/passwd')
   #directory traversal covered (as long as /etc/passwd is used)
   #very unlikely you would need to go back further than attackChain amount of directories
+  integerOverflow = range(-80000, 80000)
+  #many integer overflows are specific numbers, not necessarily numbers I would pick if making it manually.
+  #integers in arrays don't seem to have the same problem as strings in terms of length in arrays.
   #integerOverflow = [-65537, -65535, -1, 0, 100, 1000, 10000, 65535, 65536, 100000]
-  #fuzz += integerOverflow
+  #fuzzString+=integerOverflow
+  for number in integerOverflow:
+    fuzzString.append(str(number))
   #MAY NEED SEPARATE OPTION FOR NUMBERS, AS MAY BE INCOMPATIBLE!
   #checked still a list with isinstance(fuzz, list)
   #and 'not isinstance(fuzz, basestring)'
@@ -136,10 +152,6 @@ def fuzz(debugger, pid, is_attached, vulnerableCommand):
   if (isinstance(event, ProcessSignal)):
     print "died with signal %i" % event.signum
     error = signal(event.signum, vulnerableCommand)
-    print 'Next instruction:\n'
-    processInfo = "%s" % process.dumpCore() #display next instruction
-    error += processInfo
-    print processInfo
     print 'Register dump:\n'
     processInfo = "%s" % process.dumpRegs()
     error += processInfo
@@ -154,14 +166,16 @@ def fuzz(debugger, pid, is_attached, vulnerableCommand):
     print processInfo
     #process.dumpRegs()
     #error = error + processDump
-  return error
-  #else:
+  
+  else:
+    process.terminate(False)
     #print vulnerableCommand
     #print event
     #fuzz(debugger, pid, is_attached, vulnerableCommand)
   #print "New process event: %s" % event
   #signal = process.waitSignals(SIGABRT)
   #print "New signal: %s:" % signal
+  return error
   
   
 def genFuzzOpts():
@@ -220,7 +234,8 @@ def procFork(arguments):
   #to stop there being 2 arguments for the no argument case
   if arguments[1] == "":
     del(arguments[1])
-  child = createChild(arguments, False, env) #False shows stdout & stderr - could be changed, not sure if would affect program outputting memory dump etc
+  child = createChild(arguments, False, env) 
+  #False shows stdout & stderr - could be changed, not sure if would affect program outputting memory dump etc
   return child
   #except:
     #print 'problem creating child'
@@ -235,7 +250,11 @@ def fuzzProg(arguments, program):
   fuzzed = attack()
   
   index = 0
-  filename = 'ErrorsIn' + program
+  fileProgName = program
+  slashes = program.rfind('/') #if the user has put in the full program path
+  if slashes!=-1:
+    fileProgName = program[slashes+1:]
+  filename = 'ErrorsIn' + fileProgName
   file = open(filename, 'w')
 
   #for fuzzing each argument in turn
@@ -800,7 +819,7 @@ def main():
   parser.add_option("-t", "--target", action="store", type="string", dest="ip", help="Target IP address")
   parser.add_option("-u", "--username", action="store", type="string", dest="username", help="Username for logging on server, enabling full fuzzing", default="username")
   parser.add_option("-w", "--password", action="store", type="string", dest="password", help="Password for logging onto server, enabling full fuzzing", default="password")
-  parser.add_option("f", "--framework", action="store", type="string", dest="frameworkFile", help="File for specifying a user-specified protocol. See documentation for details.")
+  parser.add_option("-f", "--framework", action="store", type="string", dest="frameworkFile", help="File for specifying a user-specified protocol. See documentation for details.")
   parser.add_option("-c", action="store", type="string", dest="flags", help="Command line fuzzer, fuzzes specific program arguments.\n\r\n\rThe syntax for specifying arguments with -c is:\nThe way to specify an argument with a single hyphen is with a single colon (:) and for an argument with 2 hyphens is with 2 colons (::). This allows for arguments with a hyphen in the flag.\nAn example is (using part of the man page for Nmap):\nNmap 5.00 ( http://nmap.org )\nUsage: nmap [Scan Type(s)] [Options] {target specification}\nTARGET SPECIFICATION:\n  Can pass hostnames, IP addresses, networks, etc.\n  Ex: scanme.nmap.org, microsoft.com/24, 192.168.0.1; 10.0.0-255.1-254\n  -iL <inputfilename>: Input from list of hosts/networks\n  -iR <num hosts>: Choose random targets\n  --exclude <host1[,host2][,host3],...>: Exclude hosts/networks\n  --excludefile <exclude_file>: Exclude list from file\n...\n  --dns-servers <serv1[,serv2],...>: Specify custom DNS servers\n\nIf you wanted to fuzz the parameters -iL, --exclude, --excludefile and --dns-servers, and the program Nmap is located at /usr/bin/nmap, then the command to fuzz would be \n%s -c :iL::exlude::excludefile::dns-servers /usr/bin/nmap\nIf the no flag argument needs to be fuzzed (no options), for instance doing nmap fuzzedstring, then an  extra colon needs to be added to the end. So %s -c :iL::exlude::excludefile::dns-servers: /usr/bin/nmap" % (argv[0], argv[0]))
   (options, args) = parser.parse_args()
   lastParam = argv[params-1]
