@@ -4,163 +4,132 @@ from xml.etree import ElementTree
 import socket
 
 
-def main():
+def main(ip, file):
   boolDict = {'TRUE': True, 'FALSE': False}
   fuzz = ['A', 'AAAAAAAAAAAAAAA']
   file = 'FTPtest.xml'
   tree = ElementTree.parse(file)
   root = tree.getroot()
-  userReply = None
-  passReply = None
-  realCMDList = []
-  realAuthCMDList = []
-  if len(root.getchildren())==5 and root.getchildren()[2]=='conn':
-    #need certain commands to connect properly other than authorisation
-    conn = root.getchildren()[2]
-    connInit = []
-    stdReps = []
-    for cmd in conn.getchildren():
-      if len(cmd.getchildren)!=0: #then has replies or stdRep
-        
-        if cmd.getchildren()[0].tag=='reply':
-          reply = boolDict[cmd.getchildren()[0].attrib['val']]
-          if len(cmd.getchildren)>1: #has some standard replies
-            for replies in cmd.getchildren[1:]:
-              stdReps.append(replies)
-          
-        else:
-          reply = False
-          
-  if root.getchildren()[2].tag != 'auth':
-    #if no authorisation part, and list isn't length 3, then something is configured wrong.
-    #Need at minimum the protocol to connect, the port & some commands to fuzz
-    if len(root.getchildren())!=3:
-      print 'Something wrong in the configuration file. Please see documentation for help.\n'
-      exit(1)
-    (protocol, port, commands) = root.getchildren()
-  else:
-    #depending on if authorisation needed within protocol
-    (protocol, port, auth, commands) = root.getchildren()
-    #the children of <auth>
-    (unCMD, pwCMD) = auth.getchildren()
-    userCMD = unCMD.text
-    #getiterator gets the different occurrences of it used (in this case with the .text & with the value)
-    #need correct username & password for fuzzing authenticated
-    defaultUser = unCMD.getiterator()[1].attrib.values()[0]
-    #if it says if there's a reply or not (since optional)
-    #but could also be more if there are a number of 
-    if len(unCMD.getiterator())>2 and unCMD.getiterator()[2].tag == 'reply' and protocol.text == 'TCP':
-      userReply = unCMD.getiterator()[2].attrib.values()[0]
-      if len(unCMD.getiterator())==4: #then know a std reply should get while fuzzing
-        realAuthCMDList.append([userCMD, userReply, [unCMD.getiterator()[3].text], defaultUser])
-      else:
-        realAuthCMDList.append([userCMD, userReply, [], defaultUser])
-    else:
-      realAuthCMDList.append([userCMD, False, [], defaultUser])
-    passwdCMD = pwCMD.text
-    defaultPass = pwCMD.getiterator()[1].attrib.values()[0]
-    if len(pwCMD.getiterator())>2 and unCMD.getiterator()[2].tag == 'reply' and protocol.text == 'TCP':
-      passReply = pwCMD.getiterator()[2].attrib.values()[0]
-      if len(pwCMD.getiterator())==4: #then know a std reply should get while fuzzing
-        realAuthCMDList.append([passwdCMD, passReply, [pwCMD.getiterator()[3].text], defaultPass])
-      else:
-        realAuthCMDList.append([passwdCMD, passReply, [], defaultPass])
-    else:
-      realAuthCMDList.append([passwdCMD, False, [], defaultPass])
-  proto = protocol.text  
-  if proto != 'TCP' and proto != 'UDP':
-    print 'Invalid protocol specified. Only TCP & UDP (case sensitive) possible to use'
-    exit(1)
-  #variable port not needed again, so can just be reused.
-  port = port.text
-  #the actual commands to fuzz (need to include userCMD & pwCMD)
-  cmdList = commands.getchildren()
-  for cmd in cmdList:
-    if proto == 'TCP':
-      reply = cmd.getchildren()[0].attrib.values()[0]
-      if reply != 'TRUE' and reply != 'FALSE':
-        print 'Each command must have a value for reply of either TRUE or FALSE as long as using TCP'
+  fullSequence = []
+  default = ''
+  reply = ''
+  protocol = None
+  port = None
+  baseParts = root.getchildren()
+  cmdOrder = [] #for knowing how many loops to use
+  for elem in baseParts:
+    if elem.tag=='protocol':
+      protocol=elem.text
+      protocol = protocol.upper() #so that it isn't case sensitive
+      if protocol != 'TCP' and protocol != 'UDP': #no point going any further if not tcp or udp
+        print 'Invalid protocol specified. Only TCP & UDP (case sensitive) possible to use'
         exit(1)
-      reply
-      stdReplies = []
-      for stdReply in cmd.getchildren()[1:]:
-        stdReplies.append(stdReply.text)
-      cmdInfo = [cmd.text, reply, stdReplies]
-      realCMDList.append(cmdInfo) 
-    else: #UDP
-      for cmd in cmdList:
-        realCMDList.append([cmd.text, False, []])
-  print realCMDList #-----------TESTING PURPOSES ONLY-----------------
-  print realAuthCMDList
-  #now in form [['GET', ['203', '204']]] - array of arrays with the command & replies we should get from the result (if any reply)
-  #now have the protocol being used, any authentication needed (with username & password which can be used for authenticating), any commands
-  #and the replies I should get from the system usually (e.g. can't read ../../etc/passwd)
-  if proto=='TCP':
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((address, port))
-  elif proto=='UDP':
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-  
+    elif elem.tag=='port':
+      port = int(elem.text)
+    elif elem.tag=='seq':
+      tempSeq=[]
+      for command in elem.getchildren():
+        seqCommand=command.getchildren()
+        if len(seqCommand)==2: #then either default password & reply
+          (default, reply) = seqCommand
+          default = default.attrib.values()[0]
+          reply = reply.attrib.values()[0]
+        elif len(seqCommand)==1: #either have value for reply or default val
+          if seqCommand[0].tag=='default':
+            default= seqCommand[0].attrib.values()[0]
+            reply = 'FALSE'
+          elif seqCommand[0].tag=='reply':
+            default = ''
+            reply = seqCommand[0].attrib.values()[0]
+          else:
+            print "Problem parsing file. Please read docs for more info."
+        else:
+          default = ''
+          reply = 'FALSE'
+        tempSeq.append([command.text, default, reply]) #add the command, a default input & whether it needs a reply (only first mandatory)
+      fullSequence.append(tempSeq)
+      cmdOrder.append(1)
+    elif elem.tag=='commands': #commands that don't have to go in a particular sequence
+      for command in elem.getchildren():
+        if len(command.getchildren())==1: #reply
+          reply=command.getchildren()[0].attrib.values()[0]
+        else:
+          reply='FALSE'
+        fullSequence.append([command.text, reply])
+        cmdOrder.append(0)
+    else:
+      print "Something wrong parsing file. Please see docs for more info."
+
   #this will effectively act as a pointer to a function, so that I can just call a single function, which will call different functions
   func_map = {'TCP' : sendTCP, 'UDP' : sendUDP}
-  
-  filename = 'UserSpecifiedProtocolResults'
-  try:
-    fileToWrite = open(filename, 'w')
-  except IOError:
-    print "Problem opening file"
-  #this type of fuzzer will just go through every permutation automatically without a whole lot of checking,
-  #even if connection closed, will not restart it again, meaning that it cannot fuzz commands that will close a TCP connection
-  for cmd in realAuthCMDList:
-    for fuzzElem in fuzz:
-      fullCommand = cmd[0] + ' ' + fuzzElem
-      info = [sock, address, port, cmd[1]] #TCP & UDP need different things, but this saves time over separately making separate functions for each
-      reply = func_map[proto](info, fullCommand)
-      #check if reply is 1 of the correct replies we should get, if not report it to the file.
-      #The files will be very large if the standard reply was wrong, or if none were given. 
-      for answer in cmd[2]: 
-        #have to account for not exact answers
-        #for example with FTP, reply is determined by a code, but the program can specify a sentence with this
-        #so if the person who specified just put the code, this will check the for the code (which should always be at the start)
-        if reply[:len(answer)] != answer:
-          writeError(fileToWrite, fullCommand, '', reply)
 
-  for cmd in realCMDList:
-    #try to login for each command fuzzed
-    for authCMD in realAuthCMDList:
-      fullCommand = authCMD[0] + " " + authCMD[-1]
-      info = [sock, address, port, cmd[1]]
-      reply = func_map[proto](info, fullCommand)
-    for fuzzElem in fuzz:
-      info = [sock, address, port, cmd[1]]
-      fullCommand = cmd[0] + " " + fuzzElem
-      reply = func_map[proto](info, fullCommand)
-      for answer in cmd[2]:
-        if reply[:len(answer)] != answer:
-          writeError(fileToWrite, fullCommand, '', reply)
+  #cmdOrder now something like [1, 0, 0, 0, 1] - number for each element in fullSequence
+  #1 means it's a sequence, 0 meaning it's just on it's own
+  for index in range(len(fullSequence)):
+    if cmdOrder[index]==1: #sequence
+      #print fullSequence[index]
+      for commandIndex in range(len(fullSequence[index])): #looping through the sequence
+        #for command in fullSequence[index]: #in a sequence so send bits before in the sequence before the command we're fuzzing
+        #print fullSequence[index][commandIndex]
+        for elem in fuzz:
+          if protocol=='TCP':
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((address, port))
+          elif protocol=='UDP':
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-  if proto=='TCP':
+          command = fullSequence[index][commandIndex]
+          sendSequence(index, fullSequence, commandIndex, protocol, sock, port, ip)
+          info = [sock, command[0], elem, command[2], port, ip] #port & ip needed for UDP connection
+          #what sendTCP or sendUDP is expecting. sockfd, the command, string sending with command & whether need a reply or not
+          func_map[protocol](info)
+          #print command[0] + " " + elem + "\nReply: " + command[2] + "\n\n"
+
+    else:
+      for elem in fuzz:
+        if protocol=='TCP':
+          sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          sock.connect((address, port))
+          sock.recv(1024) #presumes that every TCP connection is initially sent something (as far as I know it is)
+        elif protocol=='UDP':
+          sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for commandIndex in range(index):
+          if cmdOrder[commandIndex]==1: #if there is a sequence before this command, perform that sequence before, i.e. logging in  
+            sendSequence(commandIndex, fullSequence, len(fullSequence[commandIndex]), protocol, sock, port, ip) #go through any sequence before this command can be done
+        func_map[protocol]([sock, fullSequence[index][0], elem, fullSequence[index][1], port, ip])
+        #print fullSequence[index][0] + " " + elem + "\nReply: " + fullSequence[index][1] + "\n\n" 
+    if proto=='TCP':
     #need to close TCP connection after fuzzing
     sock.close()
-  fileToWrite.close()
 
-def sendTCP(info, message):
+
+def sendSequence(index, fullSequence, commandIndex, protocol, sock, port, ip):
+  for prevCMDs in range(commandIndex): #loop through previous parts of sequence
+    info = [sock] + fullSequence[index] + [port, ip]
+    func_map[protocol](info)
+    #print fullSequence[index][prevCMDs][0] + " " + fullSequence[index][prevCMDs][1] + "\nReply: " + fullSequence[index][prevCMDs][2]
+    #loop through to get the start of the sequence correct
+    #this is because you have a password you need a username, or you need an HELO first, then blah blah
+
+def sendTCP(info):
   #info is a list with the socket object, ip address, port, & whether it's expecting a reply
   sock = info[0]
+  message = info[1] + " " + info[2] + "\r\n"
   sock.send(message)
   answer = None
   if info[3] == 'TRUE':
     #expecting a reply
     answer = sock.recv(1024)
-  return answer
 
-def sendUDP(info, message):
+
+def sendUDP(info):
   #info is a list with different things in depending on whether TCP  or UDP being used
-  address = info[1]
-  port = info[2]
-  sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+  sock = info[0]
+  address = info[-1]
+  port = info[-2]
+  message = info[1] + " " + info[2] + "\r\n" #this presume that every ASCII based protocol has a line delimited of \r\n
   sock.sendto(message, (address, port))
-  return None
+
 
 if __name__=='__main__':
   main()

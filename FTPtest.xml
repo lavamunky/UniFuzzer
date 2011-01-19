@@ -1,20 +1,13 @@
 <proto>
 <protocol>TCP</protocol>
 <port>21</port>
-<conn>
-<cmd>Whatever<reply val='TRUE'/><stdRep>200</stdRep></cmd>
-</conn>
-<auth>
-<unCMD>USER<defaultun val='ftpuser'/><reply val='TRUE'/>
-</unCMD>
-<pwCMD>PASS<defaultpw val ='ftpuser'/><reply val='TRUE'/><stdRep>201</stdRep>
-</pwCMD>
-</auth>
+<seq>
+<cmd>HELO<default val='bob.desktop.com'/></cmd>
+<cmd>USER<defaultun val='ftpuser'/><reply val='TRUE'/></cmd>
+<cmd>PASS<defaultpw val ='ftpuser'/><reply val='TRUE'/></cmd>
+</seq>
 <commands>
-<cmd>GET<reply val='TRUE'/>
-<stdRep>203</stdRep><stdRep>204</stdRep>
-</cmd>
-<cmd>PUT<reply val = 'FALSE'/>
-</cmd>
+<cmd>GET<reply val='TRUE'/></cmd>
+<cmd>PUT</cmd>
 </commands>
 </proto>
